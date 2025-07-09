@@ -1,0 +1,28 @@
+.{
+    .name = .rex,
+    .version = "0.1.0",
+    .fingerprint = 0xee6003c0e04dcd1e,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .sdl3 = .{
+            .url = "git+https://github.com/Gota7/zig-sdl3?ref=master#b345607214e304eed38aa7fa9c0398c9a87d7a2e",
+            .hash = "sdl3-0.0.1-NmT1Qxn8HADSNEyMNBeGHUuy4J85gwpmewsgyyP0BfXr",
+        },
+        .entt = .{
+            .url = "git+https://github.com/prime31/zig-ecS#450e9a322ea9087ffc6d471648a371f50067b55b",
+            .hash = "entt-1.0.0-qJPtbOrVAgCbPkX-YI7ERLt_4ACkKiSDSNQAc-6YlxFr",
+        },
+        .zm = .{
+            .url = "git+https://github.com/griush/zm#27ee118800e6ee0804499d053a54100beb579bf3",
+            .hash = "zm-0.3.0-cLX-WY3PAABvjPwxqDx9GZkMixyyrlHueLZTxpGy3kLE",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        // For example...
+        //"LICENSE",
+        //"README.md",
+    },
+}
