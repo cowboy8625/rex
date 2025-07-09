@@ -1,7 +1,6 @@
 const std = @import("std");
 const rex = @import("rex");
 
-const Velocity = rex.math.Vec2f;
 const Player = struct {};
 
 fn setup(engine: *rex.Engine) void {
@@ -15,7 +14,7 @@ fn setup(engine: *rex.Engine) void {
             .rotation = 0,
             .scale = rex.math.Vec2f{ 1, 1 },
         },
-        Velocity{ 0, 0 },
+        rex.Velocity{ 0, 0 },
         rex.Camera{
             .position = rex.math.Vec2f{ 0, 0 },
             .size = rex.math.UVec2{
@@ -33,10 +32,10 @@ fn setup(engine: *rex.Engine) void {
                     @floatFromInt(window.size[0] / 2),
                     @floatFromInt(window.size[1] / 2),
                 },
-                .rotation = 0,
+                .rotation = 1,
                 .scale = rex.math.Vec2f{ 1, 1 },
             },
-            Velocity{ 0, 0 },
+            rex.Velocity{ 0, 0 },
             rex.Shape{
                 .kind = .Rect,
                 .color = rex.Color{ .r = 255, .g = 0, .b = 0, .a = 255 },
@@ -73,13 +72,13 @@ fn cameraFollowPlayerSystem(engine: *rex.Engine) void {
             const player_transform = engine.registry.get(rex.Transform, player_entity);
             const target = player_transform.position;
             const current = cam_transform.position;
-            cam_transform.position = rex.math.zm.vec.lerp(current, target, 0.1);
+            cam_transform.position = rex.math.zm.vec.lerp(current, target, 0.01);
         }
     }
 }
 
 fn controlPlayerSystem(engine: *rex.Engine) void {
-    var v = Velocity{ 0, 0 };
+    var v = rex.Velocity{ 0, 0 };
     if (engine.isKeyPressed(.w)) {
         v[1] -= 1;
     }
@@ -93,35 +92,49 @@ fn controlPlayerSystem(engine: *rex.Engine) void {
         v[0] += 1;
     }
 
+    if (engine.isKeyPressed(.space)) {
+        var q = engine.registry.view(.{
+            rex.Velocity,
+            Player,
+        }, .{});
+
+        var q_iter = q.entityIterator();
+        while (q_iter.next()) |e| {
+            const vel = engine.registry.get(rex.Velocity, e);
+            vel.* = v;
+        }
+        return;
+    }
+
     if (v[0] == 0 and v[1] == 0) {
         return;
     }
 
     var q = engine.registry.view(.{
-        Velocity,
+        rex.Velocity,
         Player,
     }, .{});
 
     var q_iter = q.entityIterator();
     while (q_iter.next()) |e| {
-        const vel = engine.registry.get(Velocity, e);
+        const vel = engine.registry.get(rex.Velocity, e);
         vel.* += v;
     }
 }
-
-fn movementSystem(engine: *rex.Engine) void {
-    const time = engine.getResource(rex.Time) orelse return;
-    const dt = time.delta;
-    var q = engine.registry.view(.{ rex.Transform, Velocity, Player }, .{});
-
-    var q_iter = q.entityIterator();
-    while (q_iter.next()) |e| {
-        var transform = engine.registry.get(rex.Transform, e);
-        const vel = engine.registry.getConst(Velocity, e);
-        transform.position[0] += vel[0] * dt;
-        transform.position[1] += vel[1] * dt;
-    }
-}
+//
+// fn movementSystem(engine: *rex.Engine) void {
+//     const time = engine.getResource(rex.Time) orelse return;
+//     const dt = time.delta;
+//     var q = engine.registry.view(.{ rex.Transform, rex.Velocity, Player }, .{});
+//
+//     var q_iter = q.entityIterator();
+//     while (q_iter.next()) |e| {
+//         var transform = engine.registry.get(rex.Transform, e);
+//         const vel = engine.registry.getConst(rex.Velocity, e);
+//         transform.position[0] += vel[0] * dt;
+//         transform.position[1] += vel[1] * dt;
+//     }
+// }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -134,7 +147,7 @@ pub fn main() !void {
     engine.addSystem(.Startup, setup);
     engine.addSystem(.Update, .{
         controlPlayerSystem,
-        movementSystem,
+        // movementSystem,
         cameraFollowPlayerSystem,
     });
 
