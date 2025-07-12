@@ -32,7 +32,7 @@ fn setup(engine: *rex.Engine) void {
                     @floatFromInt(window.size[0] / 2),
                     @floatFromInt(window.size[1] / 2),
                 },
-                .rotation = 1,
+                .rotation = 0,
                 .scale = rex.math.Vec2f{ 1, 1 },
             },
             rex.Velocity{ 0, 0 },
@@ -42,19 +42,29 @@ fn setup(engine: *rex.Engine) void {
                 .size = rex.math.Vec2f{ 100, 100 },
             },
             Player{},
+            rex.Collider{
+                .size = rex.math.Vec2f{ 100, 100 },
+            },
         },
     );
 
     _ = engine.spawn(
         .{
             rex.Transform{
-                .position = rex.math.Vec2f{ 0, 0 },
+                .position = rex.math.Vec2f{
+                    @floatFromInt(window.size[0] / 3),
+                    @floatFromInt(window.size[1] / 3),
+                },
                 .rotation = 0,
                 .scale = rex.math.Vec2f{ 1, 1 },
             },
+            rex.Velocity{ 0, 0 },
             rex.Shape{
                 .kind = .Rect,
-                .color = rex.Color{ .r = 255, .g = 0, .b = 0, .a = 255 },
+                .color = rex.Color{ .r = 0, .g = 128, .b = 128, .a = 255 },
+                .size = rex.math.Vec2f{ 100, 100 },
+            },
+            rex.Collider{
                 .size = rex.math.Vec2f{ 100, 100 },
             },
         },
@@ -72,7 +82,7 @@ fn cameraFollowPlayerSystem(engine: *rex.Engine) void {
             const player_transform = engine.registry.get(rex.Transform, player_entity);
             const target = player_transform.position;
             const current = cam_transform.position;
-            cam_transform.position = rex.math.zm.vec.lerp(current, target, 0.01);
+            cam_transform.position = rex.math.zm.vec.lerp(current, target, 0.1);
         }
     }
 }
@@ -121,20 +131,6 @@ fn controlPlayerSystem(engine: *rex.Engine) void {
         vel.* += v;
     }
 }
-//
-// fn movementSystem(engine: *rex.Engine) void {
-//     const time = engine.getResource(rex.Time) orelse return;
-//     const dt = time.delta;
-//     var q = engine.registry.view(.{ rex.Transform, rex.Velocity, Player }, .{});
-//
-//     var q_iter = q.entityIterator();
-//     while (q_iter.next()) |e| {
-//         var transform = engine.registry.get(rex.Transform, e);
-//         const vel = engine.registry.getConst(rex.Velocity, e);
-//         transform.position[0] += vel[0] * dt;
-//         transform.position[1] += vel[1] * dt;
-//     }
-// }
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -144,10 +140,9 @@ pub fn main() !void {
     var engine = rex.Engine.init(allocator);
     defer engine.deinit();
 
-    engine.addSystem(.Startup, setup);
+    engine.addSystem(.Startup, .{setup});
     engine.addSystem(.Update, .{
         controlPlayerSystem,
-        // movementSystem,
         cameraFollowPlayerSystem,
     });
 

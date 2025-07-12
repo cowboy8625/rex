@@ -4,13 +4,15 @@ const sdl3 = @import("sdl3");
 const math = @import("math.zig");
 const cmp = @import("component/mod.zig");
 
-pub const Color = sdl3.pixels.Color;
+pub const Color = @import("render/Color.zig");
 pub const Transform = @import("component/Transform.zig");
 pub const Shape = @import("component/Shape.zig");
 pub const Camera = @import("component/Camera.zig");
 pub const VisibleEntities = @import("component/VisibleEntities.zig");
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
+const Renderer = @import("render/sdl3.zig");
+const Rect = @import("render/rect.zig").Rect;
 
 const Engine = @This();
 
@@ -26,18 +28,25 @@ const ResourceBox = struct {
     deinitFn: *const fn (ptr: *anyopaque, allocator: std.mem.Allocator) void,
 };
 
+// Required
 allocator: std.mem.Allocator,
 registry: entt.Registry,
+renderer: Renderer,
+
+// Defaults
 update_systems: std.ArrayListUnmanaged(SystemFn) = .{},
 startup_systems: std.ArrayListUnmanaged(SystemFn) = .{},
+
+resources: std.AutoHashMapUnmanaged(usize, ResourceBox) = .{},
+
 keys: [@typeInfo(sdl3.keycode.Keycode).@"enum".fields.len]bool =
     [_]bool{false} ** @typeInfo(sdl3.keycode.Keycode).@"enum".fields.len,
-resources: std.AutoHashMapUnmanaged(usize, ResourceBox) = .{},
 
 pub fn init(allocator: std.mem.Allocator) Engine {
     return Engine{
         .allocator = allocator,
         .registry = entt.Registry.init(allocator),
+        .renderer = Renderer.init(allocator) catch @panic("Failed to init Renderer"),
     };
 }
 
@@ -161,43 +170,23 @@ pub fn isKeyPressed(self: *Engine, key: sdl3.keycode.Keycode) bool {
     return self.keys[@intFromEnum(key)];
 }
 
-fn setupResources(self: *Engine, window: *const sdl3.video.Window) !void {
+fn setupResources(self: *Engine) !void {
     self.insertResource(Time{ .delta = 0, .total = 0 });
-    const size = try window.getSize();
+    const size = try self.renderer.getWindowSize();
     self.insertResource(Window{ .size = math.Vec(2, usize){ size.width, size.height } });
 }
 
 pub fn run(self: *Engine) !void {
-    defer sdl3.shutdown();
-
-    const init_flags = sdl3.InitFlags{ .video = true };
-    try sdl3.init(init_flags);
-    defer sdl3.quit(init_flags);
-
-    const window = try sdl3.video.Window.init("Hello SDL3", 400, 400, .{});
-    defer window.deinit();
-    try window.setFullscreen(true);
-    const renderer = try sdl3.render.Renderer.init(window, null);
-    defer renderer.deinit();
-
-    const surface = try window.getSurface();
-    try surface.fillRect(null, surface.mapRgb(128, 30, 255));
-    try window.updateSurface();
-
-    for (0..4) |_| {
-        window.sync() catch |e| {
-            std.log.err("Failed to sync window: {any}", .{e});
-            continue;
-        };
-        break;
-    }
-
     var last_counter: u64 = sdl3.timer.getPerformanceCounter();
     const freq: u64 = sdl3.timer.getPerformanceFrequency();
 
-    self.addSystem(.Update, .{ visibilitySystem, cmp.physicsSystem });
+    self.addSystem(.Update, .{
+        visibilitySystem,
+        cmp.physicsSystem,
+        cmp.collisionSystem,
+    });
 
-    try self.setupResources(&window);
+    try self.setupResources();
     self.runStartupSystems();
     while (true) {
         const current_counter = sdl3.timer.getPerformanceCounter();
@@ -226,17 +215,15 @@ pub fn run(self: *Engine) !void {
 
         self.runUpdateSystems();
 
-        try renderer.setDrawColor(Color{ .r = 0, .g = 0, .b = 0, .a = 255 });
-        try renderer.clear();
+        try self.renderer.renderStart();
 
-        try self.renderShapeSystem(&renderer);
+        try self.renderShapeSystem();
 
-        try renderer.present();
-        sdl3.timer.delayMilliseconds(16);
+        try self.renderer.renderEnd();
     }
 }
 
-fn renderShapeSystem(self: *Engine, renderer: *const sdl3.render.Renderer) !void {
+fn renderShapeSystem(self: *Engine) !void {
     var cam_query = self.registry.view(.{ Camera, Transform }, .{});
     var cam_iter = cam_query.entityIterator();
     const cam_entity = cam_iter.next() orelse return;
@@ -262,14 +249,13 @@ fn renderShapeSystem(self: *Engine, renderer: *const sdl3.render.Renderer) !void
 
         switch (shape.kind) {
             .Rect => {
-                const rect = sdl3.rect.FRect{
+                const rect = Rect(f32){
                     .x = draw_pos[0],
                     .y = draw_pos[1],
-                    .w = shape.size[0],
-                    .h = shape.size[1],
+                    .width = shape.size[0],
+                    .height = shape.size[1],
                 };
-                try renderer.setDrawColor(shape.color);
-                try renderer.renderFillRect(rect);
+                try self.renderer.rect(rect, shape.color);
             },
         }
     }
@@ -291,6 +277,9 @@ fn visibilitySystem(engine: *Engine) void {
 
         var shape_iter = shape_view.entityIterator();
         while (shape_iter.next()) |shape_entity| {
+            if (engine.registry.has(@import("component/mod.zig").Collider, shape_entity)) {
+                std.log.warn("Visibility system does not support colliders", .{});
+            }
             const shape_transform = engine.registry.get(Transform, shape_entity);
             const shape = engine.registry.getConst(Shape, shape_entity);
             const shape_bounds = math.AABBf.init(shape_transform.position, shape.size);
