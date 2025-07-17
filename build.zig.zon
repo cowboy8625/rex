@@ -16,6 +16,10 @@
             .url = "git+https://github.com/griush/zm#27ee118800e6ee0804499d053a54100beb579bf3",
             .hash = "zm-0.3.0-cLX-WY3PAABvjPwxqDx9GZkMixyyrlHueLZTxpGy3kLE",
         },
+        // .rlz = .{
+        //     .url = "git+https://github.com/Not-Nik/raylib-zig?ref=zig-0.14#57a8a21b486af47d62cb8ce39a0c7902019a86d2",
+        //     .hash = "raylib_zig-5.6.0-dev-KE8RELUtBQD9ynf9BONdwukHlR4Ib8k_hZZUkqUPO7uJ",
+        // },
     },
     .paths = .{
         "build.zig",

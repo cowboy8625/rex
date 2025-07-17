@@ -5,13 +5,17 @@ const math = @import("math.zig");
 const cmp = @import("component/mod.zig");
 
 pub const Color = @import("render/Color.zig");
+
+pub const Sprite = @import("component/Sprite.zig");
 pub const Transform = @import("component/Transform.zig");
 pub const Shape = @import("component/Shape.zig");
 pub const Camera = @import("component/Camera.zig");
 pub const VisibleEntities = @import("component/VisibleEntities.zig");
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
-const Renderer = @import("render/sdl3.zig");
+pub const Renderer = @import("render/sdl3.zig");
+pub const AssetServer = @import("resource/AssetServer.zig");
+
 const Rect = @import("render/rect.zig").Rect;
 
 const Engine = @This();
@@ -46,7 +50,7 @@ pub fn init(allocator: std.mem.Allocator) Engine {
     return Engine{
         .allocator = allocator,
         .registry = entt.Registry.init(allocator),
-        .renderer = Renderer.init(allocator) catch @panic("Failed to init Renderer"),
+        .renderer = Renderer.init() catch @panic("Failed to init renderer"),
     };
 }
 
@@ -67,6 +71,7 @@ pub fn deinit(self: *Engine) void {
         visible.deinit(self.allocator);
     }
     self.registry.deinit();
+    self.renderer.deinit();
 }
 
 pub fn spawn(self: *Engine, components: anytype) entt.Entity {
@@ -121,6 +126,7 @@ fn addStartupSystem(self: *Engine, systems: anytype) void {
 pub fn insertResource(self: *Engine, value: anytype) void {
     const T = @TypeOf(value);
     const ptr = self.allocator.create(T) catch @panic("OOM");
+    errdefer self.allocator.destroy(ptr);
     ptr.* = value;
 
     const type_id = getTypeKey(T);
@@ -173,7 +179,8 @@ pub fn isKeyPressed(self: *Engine, key: sdl3.keycode.Keycode) bool {
 fn setupResources(self: *Engine) !void {
     self.insertResource(Time{ .delta = 0, .total = 0 });
     const size = try self.renderer.getWindowSize();
-    self.insertResource(Window{ .size = math.Vec(2, usize){ size.width, size.height } });
+    self.insertResource(Window{ .size = size });
+    self.insertResource(AssetServer.init(self.allocator));
 }
 
 pub fn run(self: *Engine) !void {
@@ -218,8 +225,48 @@ pub fn run(self: *Engine) !void {
         try self.renderer.renderStart();
 
         try self.renderShapeSystem();
+        try self.renderTextureSystem();
 
         try self.renderer.renderEnd();
+    }
+}
+
+fn renderTextureSystem(self: *Engine) !void {
+    var cam_query = self.registry.view(.{ Camera, Transform }, .{});
+    var cam_iter = cam_query.entityIterator();
+    const cam_entity = cam_iter.next() orelse return;
+    const cam_transform = self.registry.get(Transform, cam_entity);
+    const cam = self.registry.get(Camera, cam_entity);
+    const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
+
+    const screen_center = math.Vec2f{
+        @floatFromInt(cam.size[0] / 2),
+        @floatFromInt(cam.size[1] / 2),
+    };
+
+    // Draw shapes
+    var q = self.registry.view(.{ Transform, Sprite }, .{});
+    var q_iter = q.entityIterator();
+    while (q_iter.next()) |e| {
+        const transform = self.registry.get(Transform, e);
+        const sprite = self.registry.getConst(Sprite, e);
+
+        // Compute position relative to camera
+        const world_pos = transform.position;
+        const cam_pos = cam_transform.position;
+        const draw_pos = (world_pos - cam_pos) + screen_center;
+
+        const r = self.renderer.renderer;
+
+        if (asset_server.get(sprite.asset_name)) |texture| {
+            const rect = sdl3.rect.FRect{
+                .x = draw_pos[0],
+                .y = draw_pos[1],
+                .w = sprite.size[0],
+                .h = sprite.size[1],
+            };
+            try r.renderTexture(texture, null, rect);
+        }
     }
 }
 
@@ -277,9 +324,6 @@ fn visibilitySystem(engine: *Engine) void {
 
         var shape_iter = shape_view.entityIterator();
         while (shape_iter.next()) |shape_entity| {
-            if (engine.registry.has(@import("component/mod.zig").Collider, shape_entity)) {
-                std.log.warn("Visibility system does not support colliders", .{});
-            }
             const shape_transform = engine.registry.get(Transform, shape_entity);
             const shape = engine.registry.getConst(Shape, shape_entity);
             const shape_bounds = math.AABBf.init(shape_transform.position, shape.size);

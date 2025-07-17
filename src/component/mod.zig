@@ -1,6 +1,9 @@
 const std = @import("std");
 const math = @import("../math.zig");
+
 const Vec2f = math.Vec2f;
+
+pub const Sprite = @import("Sprite.zig");
 pub const Camera = @import("Camera.zig");
 pub const Shape = @import("Shape.zig");
 pub const Transform = @import("Transform.zig");
@@ -58,7 +61,6 @@ pub fn collisionSystem(engine: *Engine) void {
                 vel_a[1] = 0;
                 vel_b[0] = 0;
                 vel_b[1] = 0;
-                std.log.info("collision", .{});
             }
             // if (checkAabbCollision(transform_a, collider_a, transform_b, collider_b)) {
             //     const vel_a = engine.registry.get(Velocity, entity_a);
@@ -67,7 +69,6 @@ pub fn collisionSystem(engine: *Engine) void {
             //     vel_a[1] = 0;
             //     vel_b[0] = 0;
             //     vel_b[1] = 0;
-            //     std.log.info("collision", .{});
             // }
         }
     }

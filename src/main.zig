@@ -69,6 +69,34 @@ fn setup(engine: *rex.Engine) void {
             },
         },
     );
+
+    const asset_server = engine.getResource(rex.AssetServer) orelse @panic("no asset server");
+    asset_server.load(&engine.renderer.renderer, .idle) catch @panic("asset load failed");
+
+    _ = engine.spawn(
+        .{
+            rex.Transform{
+                .position = rex.math.Vec2f{
+                    @floatFromInt(window.size[0] / 3),
+                    @floatFromInt(window.size[1] / 2),
+                },
+                .rotation = 0,
+                .scale = rex.math.Vec2f{ 1, 1 },
+            },
+            // rex.Velocity{ 0, 0 },
+            rex.Sprite{
+                .asset_name = .idle,
+                .src_rect = .{
+                    .x = 0,
+                    .y = 0,
+                    .width = 100,
+                    .height = 100,
+                },
+                .origin = .{ 0, 0 },
+                .size = .{ 100, 100 },
+            },
+        },
+    );
 }
 
 fn cameraFollowPlayerSystem(engine: *rex.Engine) void {
