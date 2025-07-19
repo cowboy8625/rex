@@ -3,9 +3,10 @@ const math = @import("../math.zig");
 
 const Vec2f = math.Vec2f;
 
-pub const Sprite = @import("Sprite.zig");
+pub const Animation = @import("Animation.zig");
 pub const Camera = @import("Camera.zig");
 pub const Shape = @import("Shape.zig");
+pub const Sprite = @import("Sprite.zig");
 pub const Transform = @import("Transform.zig");
 pub const VisibleEntities = @import("VisibleEntities.zig");
 pub const Velocity = math.Vec2f;
@@ -20,6 +21,23 @@ test {
 
 const Engine = @import("../Engine.zig");
 const Time = @import("../resource/Time.zig");
+
+pub fn animateSystem(engine: *Engine) void {
+    const time = engine.getResourceConst(Time) orelse return;
+    var q = engine.registry.view(.{ Animation, Sprite }, .{});
+    var q_iter = q.entityIterator();
+    while (q_iter.next()) |e| {
+        const anim = engine.registry.get(Animation, e);
+        anim.update(time.delta);
+        const sprite = engine.registry.get(Sprite, e);
+        if (sprite.src_rect) |*rect| {
+            const x_index: f32 = @floatFromInt(anim.frame % anim.horizontal_frames);
+            const y_index: f32 = @floatFromInt(anim.frame / anim.horizontal_frames);
+            rect.x = x_index * rect.w;
+            rect.y = y_index * rect.h;
+        }
+    }
+}
 
 pub fn physicsSystem(engine: *Engine) void {
     const time = engine.getResource(Time) orelse return;

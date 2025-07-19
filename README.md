@@ -12,5 +12,3 @@ I started this project after I kept copying and pasting the same code over and o
 ### **Example**
 
 [example 1](./src/main.zig)
-
-### **Usage**

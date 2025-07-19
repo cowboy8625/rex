@@ -32,7 +32,7 @@ fn setup(engine: *rex.Engine) void {
                 },
                 .size = .{ 32, 64 },
             },
-            Animation{
+            rex.Animation{
                 .horizontal_frames = 2,
                 .vertical_frames = 1,
             },
@@ -128,16 +128,16 @@ fn cameraFollowPlayerSystem(engine: *rex.Engine) void {
 fn controlPlayerSystem(engine: *rex.Engine) void {
     var v = rex.Velocity{ 0, 0 };
     if (engine.isKeyPressed(.w)) {
-        v[1] -= 1;
+        v[1] -= 10;
     }
     if (engine.isKeyPressed(.s)) {
-        v[1] += 1;
+        v[1] += 10;
     }
     if (engine.isKeyPressed(.a)) {
-        v[0] -= 1;
+        v[0] -= 10;
     }
     if (engine.isKeyPressed(.d)) {
-        v[0] += 1;
+        v[0] += 10;
     }
 
     if (engine.isKeyPressed(.space)) {
@@ -182,7 +182,6 @@ pub fn main() !void {
     engine.addSystem(.Update, .{
         controlPlayerSystem,
         cameraFollowPlayerSystem,
-        animateSystem,
     });
 
     try engine.run();

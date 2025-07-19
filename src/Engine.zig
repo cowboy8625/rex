@@ -189,6 +189,7 @@ pub fn run(self: *Engine) !void {
         visibilitySystem,
         cmp.physicsSystem,
         cmp.collisionSystem,
+        cmp.animateSystem,
     });
 
     try self.setupResources();
