@@ -1,6 +1,6 @@
 # Rex
 
-> [!warn] This is a work in progress!
+> [!warning] This is a work in progress!
 > I have only tested this on Debian linux.
 > Milage may vary.
 > This project is unfinished and thus is missing all kinds of features.
