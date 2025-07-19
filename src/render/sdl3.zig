@@ -1,8 +1,5 @@
 const std = @import("std");
 const sdl3 = @import("sdl3");
-const Color = @import("Color.zig");
-const Rect = @import("rect.zig").Rect;
-const RenderTrait = @import("trait.zig");
 const math = @import("../math.zig");
 
 const Self = @This();
@@ -56,20 +53,7 @@ pub fn getWindowSize(self: *Self) anyerror!math.Vec(2, usize) {
     return .{ size.width, size.height };
 }
 
-pub fn rect(self: *Self, rectangle: Rect(f32), color: Color) anyerror!void {
-    const sdl3_color = sdl3.pixels.Color{
-        .r = color.r,
-        .g = color.g,
-        .b = color.b,
-        .a = color.a,
-    };
-    try self.renderer.setDrawColor(sdl3_color);
-
-    const sdl3_rect = sdl3.rect.FRect{
-        .x = rectangle.x,
-        .y = rectangle.y,
-        .w = rectangle.width,
-        .h = rectangle.height,
-    };
-    try self.renderer.renderFillRect(sdl3_rect);
+pub fn rect(self: *Self, rectangle: sdl3.rect.FRect, color: sdl3.pixels.Color) anyerror!void {
+    try self.renderer.setDrawColor(color);
+    try self.renderer.renderFillRect(rectangle);
 }

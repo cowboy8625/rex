@@ -11,6 +11,7 @@ pub const VisibleEntities = @import("VisibleEntities.zig");
 pub const Velocity = math.Vec2f;
 
 test {
+    _ = @import("Animation.zig");
     _ = @import("Camera.zig");
     _ = @import("Shape.zig");
     _ = @import("Transform.zig");
@@ -30,7 +31,10 @@ pub fn physicsSystem(engine: *Engine) void {
         const transform = engine.registry.get(Transform, entity);
         const velocity = engine.registry.get(Velocity, entity);
 
-        transform.position += velocity.* * dt;
+        const delta = math.zm.vec.xy(velocity.*) * dt;
+        const new_pos = math.zm.vec.xy(transform.position) + delta;
+
+        transform.position = math.Vec3f{ new_pos[0], new_pos[1], transform.position[2] };
     }
 }
 
@@ -46,7 +50,7 @@ pub fn collisionSystem(engine: *Engine) void {
         const transform_a = engine.registry.get(Transform, entity_a);
         const collider_a = engine.registry.get(Collider, entity_a);
 
-        const aabb = math.AABBf.init(transform_a.position, collider_a.size);
+        const aabb = math.AABBf.init(math.zm.vec.xy(transform_a.position), collider_a.size);
         var iter_b = query.entityIterator();
         while (iter_b.next()) |entity_b| {
             if (entity_a == entity_b) continue;
@@ -54,7 +58,7 @@ pub fn collisionSystem(engine: *Engine) void {
             const transform_b = engine.registry.get(Transform, entity_b);
             const collider_b = engine.registry.get(Collider, entity_b);
 
-            if (aabb.intersects(math.AABBf.init(transform_b.position, collider_b.size))) {
+            if (aabb.intersects(math.AABBf.init(math.zm.vec.xy(transform_b.position), collider_b.size))) {
                 const vel_a = engine.registry.get(Velocity, entity_a);
                 const vel_b = engine.registry.get(Velocity, entity_b);
                 vel_a[0] = 0;

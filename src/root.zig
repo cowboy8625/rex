@@ -8,8 +8,9 @@ pub const Asset = @import("generated_assets");
 
 pub const Entity = entt.Entity;
 
-pub const Color = @import("render/Color.zig");
+pub const Color = sdl3.pixels.Color;
 
+pub const Animation = component.Animation;
 pub const Sprite = component.Sprite;
 pub const Transform = component.Transform;
 pub const Shape = component.Shape;

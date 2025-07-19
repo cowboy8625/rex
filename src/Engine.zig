@@ -4,7 +4,7 @@ const sdl3 = @import("sdl3");
 const math = @import("math.zig");
 const cmp = @import("component/mod.zig");
 
-pub const Color = @import("render/Color.zig");
+pub const Color = sdl3.pixels.Color;
 
 pub const Sprite = @import("component/Sprite.zig");
 pub const Transform = @import("component/Transform.zig");
@@ -15,8 +15,6 @@ pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
 pub const Renderer = @import("render/sdl3.zig");
 pub const AssetServer = @import("resource/AssetServer.zig");
-
-const Rect = @import("render/rect.zig").Rect;
 
 const Engine = @This();
 
@@ -237,6 +235,8 @@ fn renderTextureSystem(self: *Engine) !void {
     const cam_entity = cam_iter.next() orelse return;
     const cam_transform = self.registry.get(Transform, cam_entity);
     const cam = self.registry.get(Camera, cam_entity);
+    const visible = self.registry.get(VisibleEntities, cam_entity);
+
     const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
 
     const screen_center = math.Vec2f{
@@ -245,16 +245,15 @@ fn renderTextureSystem(self: *Engine) !void {
     };
 
     // Draw shapes
-    var q = self.registry.view(.{ Transform, Sprite }, .{});
-    var q_iter = q.entityIterator();
-    while (q_iter.next()) |e| {
+    for (visible.list.items) |e| {
+        if (!self.registry.has(Sprite, e)) continue;
         const transform = self.registry.get(Transform, e);
         const sprite = self.registry.getConst(Sprite, e);
 
         // Compute position relative to camera
         const world_pos = transform.position;
         const cam_pos = cam_transform.position;
-        const draw_pos = (world_pos - cam_pos) + screen_center;
+        const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
 
         const r = self.renderer.renderer;
 
@@ -265,42 +264,42 @@ fn renderTextureSystem(self: *Engine) !void {
                 .w = sprite.size[0],
                 .h = sprite.size[1],
             };
-            try r.renderTexture(texture, null, rect);
+
+            try r.renderTexture(texture, sprite.src_rect, rect);
         }
     }
 }
 
 fn renderShapeSystem(self: *Engine) !void {
-    var cam_query = self.registry.view(.{ Camera, Transform }, .{});
+    var cam_query = self.registry.view(.{ Camera, Transform, VisibleEntities }, .{});
     var cam_iter = cam_query.entityIterator();
     const cam_entity = cam_iter.next() orelse return;
     const cam_transform = self.registry.get(Transform, cam_entity);
     const cam = self.registry.get(Camera, cam_entity);
+    const visible = self.registry.get(VisibleEntities, cam_entity);
 
     const screen_center = math.Vec2f{
         @floatFromInt(cam.size[0] / 2),
         @floatFromInt(cam.size[1] / 2),
     };
 
-    // Draw shapes
-    var q = self.registry.view(.{ Transform, Shape }, .{});
-    var q_iter = q.entityIterator();
-    while (q_iter.next()) |e| {
+    for (visible.list.items) |e| {
+        if (!self.registry.has(Shape, e)) continue;
         const transform = self.registry.get(Transform, e);
         const shape = self.registry.getConst(Shape, e);
 
         // Compute position relative to camera
         const world_pos = transform.position;
         const cam_pos = cam_transform.position;
-        const draw_pos = (world_pos - cam_pos) + screen_center;
+        const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
 
         switch (shape.kind) {
             .Rect => {
-                const rect = Rect(f32){
+                const rect = sdl3.rect.FRect{
                     .x = draw_pos[0],
                     .y = draw_pos[1],
-                    .width = shape.size[0],
-                    .height = shape.size[1],
+                    .w = shape.size[0],
+                    .h = shape.size[1],
                 };
                 try self.renderer.rect(rect, shape.color);
             },
@@ -310,9 +309,10 @@ fn renderShapeSystem(self: *Engine) !void {
 
 fn visibilitySystem(engine: *Engine) void {
     var cam_view = engine.registry.view(.{ Camera, Transform, VisibleEntities }, .{});
-    var shape_view = engine.registry.view(.{ Transform, Shape }, .{});
+    var render_view = engine.registry.view(.{Transform}, .{});
 
     var cam_iter = cam_view.entityIterator();
+
     while (cam_iter.next()) |cam_entity| {
         const cam_transform = engine.registry.getConst(Transform, cam_entity);
         const camera = engine.registry.getConst(Camera, cam_entity);
@@ -320,19 +320,66 @@ fn visibilitySystem(engine: *Engine) void {
         visible.list.clearRetainingCapacity();
 
         const camera_size = math.Vec2f{ @as(f32, @floatFromInt(camera.size[0])), @as(f32, @floatFromInt(camera.size[1])) };
-        const cam_bounds = math.AABBf.init(cam_transform.position, camera_size);
+        const cam_bounds = blk: {
+            const half_size = math.zm.vec.scale(camera_size, 0.5);
+            const center = math.zm.vec.xy(cam_transform.position);
+            break :blk math.AABBf{
+                .min = center - half_size,
+                .max = center + half_size,
+            };
+        };
 
-        var shape_iter = shape_view.entityIterator();
-        while (shape_iter.next()) |shape_entity| {
-            const shape_transform = engine.registry.get(Transform, shape_entity);
-            const shape = engine.registry.getConst(Shape, shape_entity);
-            const shape_bounds = math.AABBf.init(shape_transform.position, shape.size);
-
-            if (!cam_bounds.intersects(shape_bounds)) {
+        var render_iter = render_view.entityIterator();
+        while (render_iter.next()) |shape_entity| {
+            const transform = engine.registry.get(Transform, shape_entity);
+            const hasShape = engine.registry.has(Shape, shape_entity);
+            const hasSprite = engine.registry.has(Sprite, shape_entity);
+            if (!hasShape and !hasSprite) {
                 continue;
             }
-            visible.list.append(engine.allocator, shape_entity) catch {};
+
+            if (hasShape) {
+                const shape = engine.registry.getConst(Shape, shape_entity);
+                const shape_bounds = blk: {
+                    const half_size = math.zm.vec.scale(shape.size, 0.5);
+                    const center = math.zm.vec.xy(transform.position);
+                    break :blk math.AABBf{
+                        .min = center - half_size,
+                        .max = center + half_size,
+                    };
+                };
+
+                if (!shape_bounds.intersects(cam_bounds)) {
+                    continue;
+                }
+
+                visible.list.append(engine.allocator, shape_entity) catch @panic("Out of memory");
+            } else if (hasSprite) {
+                const sprite = engine.registry.getConst(Sprite, shape_entity);
+                const sprite_bounds = blk: {
+                    const half_size = math.zm.vec.scale(sprite.size, 0.5);
+                    const center = math.zm.vec.xy(transform.position);
+                    break :blk math.AABBf{
+                        .min = center - half_size,
+                        .max = center + half_size,
+                    };
+                };
+
+                if (!sprite_bounds.intersects(cam_bounds)) {
+                    continue;
+                }
+
+                visible.list.append(engine.allocator, shape_entity) catch @panic("Out of memory");
+            }
         }
+
+        std.mem.sort(entt.Entity, visible.list.items, engine, struct {
+            fn lessThan(e: *Engine, a: entt.Entity, b: entt.Entity) bool {
+                const a_z = e.registry.get(Transform, a).position[2];
+                const b_z = e.registry.get(Transform, b).position[2];
+                return a_z < b_z;
+            }
+        }.lessThan);
     }
 }
 

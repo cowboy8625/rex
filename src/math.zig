@@ -3,6 +3,8 @@ pub const zm = @import("zm");
 pub const Vec = zm.vec.Vec;
 /// f32
 pub const Vec2f = zm.vec.Vec2f;
+/// f32
+pub const Vec3f = zm.vec.Vec3f;
 /// f64
 pub const Vec2 = zm.vec.Vec2;
 /// i32
