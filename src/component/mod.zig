@@ -15,6 +15,7 @@ test {
     _ = @import("Animation.zig");
     _ = @import("Camera.zig");
     _ = @import("Shape.zig");
+    _ = @import("Sprite.zig");
     _ = @import("Transform.zig");
     _ = @import("VisibleEntities.zig");
 }
@@ -67,8 +68,14 @@ pub fn collisionSystem(engine: *Engine) void {
     while (iter_a.next()) |entity_a| {
         const transform_a = engine.registry.get(Transform, entity_a);
         const collider_a = engine.registry.get(Collider, entity_a);
-
-        const aabb = math.AABBf.init(math.zm.vec.xy(transform_a.position), collider_a.size);
+        const aabb = blk: {
+            const half_size = math.zm.vec.scale(collider_a.size, 0.5);
+            const center = math.zm.vec.xy(transform_a.position);
+            break :blk math.AABBf{
+                .min = center - half_size,
+                .max = center + half_size,
+            };
+        };
         var iter_b = query.entityIterator();
         while (iter_b.next()) |entity_b| {
             if (entity_a == entity_b) continue;
@@ -76,7 +83,16 @@ pub fn collisionSystem(engine: *Engine) void {
             const transform_b = engine.registry.get(Transform, entity_b);
             const collider_b = engine.registry.get(Collider, entity_b);
 
-            if (aabb.intersects(math.AABBf.init(math.zm.vec.xy(transform_b.position), collider_b.size))) {
+            const item = blk: {
+                const half_size = math.zm.vec.scale(collider_b.size, 0.5);
+                const center = math.zm.vec.xy(transform_b.position);
+                break :blk math.AABBf{
+                    .min = center - half_size,
+                    .max = center + half_size,
+                };
+            };
+
+            if (aabb.intersects(item)) {
                 const vel_a = engine.registry.get(Velocity, entity_a);
                 const vel_b = engine.registry.get(Velocity, entity_b);
                 vel_a[0] = 0;
@@ -84,14 +100,6 @@ pub fn collisionSystem(engine: *Engine) void {
                 vel_b[0] = 0;
                 vel_b[1] = 0;
             }
-            // if (checkAabbCollision(transform_a, collider_a, transform_b, collider_b)) {
-            //     const vel_a = engine.registry.get(Velocity, entity_a);
-            //     const vel_b = engine.registry.get(Velocity, entity_b);
-            //     vel_a[0] = 0;
-            //     vel_a[1] = 0;
-            //     vel_b[0] = 0;
-            //     vel_b[1] = 0;
-            // }
         }
     }
 }

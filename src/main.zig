@@ -36,6 +36,9 @@ fn setup(engine: *rex.Engine) void {
                 .horizontal_frames = 2,
                 .vertical_frames = 1,
             },
+            rex.Collider{
+                .size = rex.math.Vec2f{ 32, 64 },
+            },
             Player{},
         },
     );
@@ -184,5 +187,7 @@ pub fn main() !void {
         cameraFollowPlayerSystem,
     });
 
-    try engine.run();
+    try engine.run(.{
+        .renderColliders = true,
+    });
 }

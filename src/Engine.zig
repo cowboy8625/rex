@@ -11,6 +11,8 @@ pub const Transform = @import("component/Transform.zig");
 pub const Shape = @import("component/Shape.zig");
 pub const Camera = @import("component/Camera.zig");
 pub const VisibleEntities = @import("component/VisibleEntities.zig");
+pub const Collider = @import("component/mod.zig").Collider;
+
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
 pub const Renderer = @import("render/sdl3.zig");
@@ -181,7 +183,7 @@ fn setupResources(self: *Engine) !void {
     self.insertResource(AssetServer.init(self.allocator));
 }
 
-pub fn run(self: *Engine) !void {
+pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !void {
     var last_counter: u64 = sdl3.timer.getPerformanceCounter();
     const freq: u64 = sdl3.timer.getPerformanceFrequency();
 
@@ -225,8 +227,49 @@ pub fn run(self: *Engine) !void {
 
         try self.renderShapeSystem();
         try self.renderTextureSystem();
+        if (options.renderColliders) try self.renderColliderSystem();
 
         try self.renderer.renderEnd();
+    }
+}
+
+pub fn renderColliderSystem(engine: *Engine) !void {
+    var cam_query = engine.registry.view(.{ Camera, Transform }, .{});
+    var cam_iter = cam_query.entityIterator();
+    const cam_entity = cam_iter.next() orelse return;
+    const cam_transform = engine.registry.get(Transform, cam_entity);
+    const cam = engine.registry.get(Camera, cam_entity);
+    const screen_center = math.Vec2f{
+        @floatFromInt(cam.size[0] / 2),
+        @floatFromInt(cam.size[1] / 2),
+    };
+
+    var query = engine.registry.view(.{ Transform, Collider }, .{});
+    var iter = query.entityIterator();
+
+    while (iter.next()) |e| {
+        const transform = engine.registry.get(Transform, e);
+        const collider = engine.registry.get(Collider, e);
+
+        const world_pos = transform.position;
+        const cam_pos = cam_transform.position;
+        const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
+
+        const rect = sdl3.rect.FRect{
+            .x = draw_pos[0],
+            .y = draw_pos[1],
+            .w = collider.size[0],
+            .h = collider.size[1],
+        };
+
+        const color = sdl3.pixels.Color{
+            .r = 0,
+            .g = 129,
+            .b = 129,
+            .a = 99,
+        };
+
+        try engine.renderer.rect(rect, color);
     }
 }
 
@@ -245,29 +288,29 @@ fn renderTextureSystem(self: *Engine) !void {
         @floatFromInt(cam.size[1] / 2),
     };
 
-    // Draw shapes
     for (visible.list.items) |e| {
         if (!self.registry.has(Sprite, e)) continue;
         const transform = self.registry.get(Transform, e);
         const sprite = self.registry.getConst(Sprite, e);
 
-        // Compute position relative to camera
         const world_pos = transform.position;
         const cam_pos = cam_transform.position;
         const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
 
         const r = self.renderer.renderer;
 
-        if (asset_server.get(sprite.asset_name)) |texture| {
-            const rect = sdl3.rect.FRect{
-                .x = draw_pos[0],
-                .y = draw_pos[1],
-                .w = sprite.size[0],
-                .h = sprite.size[1],
-            };
+        const texture = asset_server.get(sprite.asset_name) orelse {
+            std.log.err("Texture not found: {s}", .{@tagName(sprite.asset_name)});
+            @panic("Texture not found");
+        };
+        const rect = sdl3.rect.FRect{
+            .x = draw_pos[0],
+            .y = draw_pos[1],
+            .w = sprite.size[0],
+            .h = sprite.size[1],
+        };
 
-            try r.renderTexture(texture, sprite.src_rect, rect);
-        }
+        try r.renderTexture(texture, sprite.src_rect, rect);
     }
 }
 
@@ -289,7 +332,6 @@ fn renderShapeSystem(self: *Engine) !void {
         const transform = self.registry.get(Transform, e);
         const shape = self.registry.getConst(Shape, e);
 
-        // Compute position relative to camera
         const world_pos = transform.position;
         const cam_pos = cam_transform.position;
         const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;

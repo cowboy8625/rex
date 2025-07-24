@@ -20,6 +20,7 @@ pub fn init() !Self {
 
     const renderer = try sdl3.render.Renderer.init(window, null);
     errdefer renderer.deinit();
+    try renderer.setDrawBlendMode(.blend);
 
     const surface = try window.getSurface();
     try surface.fillRect(null, surface.mapRgb(128, 30, 255));
