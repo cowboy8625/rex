@@ -283,19 +283,12 @@ fn renderTextureSystem(self: *Engine) !void {
 
     const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
 
-    const screen_center = math.Vec2f{
-        @floatFromInt(cam.size[0] / 2),
-        @floatFromInt(cam.size[1] / 2),
-    };
-
     for (visible.list.items) |e| {
         if (!self.registry.has(Sprite, e)) continue;
         const transform = self.registry.get(Transform, e);
         const sprite = self.registry.getConst(Sprite, e);
 
-        const world_pos = transform.position;
-        const cam_pos = cam_transform.position;
-        const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
+        const draw_pos = cam.worldToCamera2d(transform.position, cam_transform.position);
 
         const r = self.renderer.renderer;
 
@@ -363,14 +356,7 @@ fn visibilitySystem(engine: *Engine) void {
         visible.list.clearRetainingCapacity();
 
         const camera_size = math.Vec2f{ @as(f32, @floatFromInt(camera.size[0])), @as(f32, @floatFromInt(camera.size[1])) };
-        const cam_bounds = blk: {
-            const half_size = math.zm.vec.scale(camera_size, 0.5);
-            const center = math.zm.vec.xy(cam_transform.position);
-            break :blk math.AABBf{
-                .min = center - half_size,
-                .max = center + half_size,
-            };
-        };
+        const cam_bounds = math.initABBFromCenter(f32, cam_transform.position, camera_size);
 
         var render_iter = render_view.entityIterator();
         while (render_iter.next()) |shape_entity| {
@@ -383,14 +369,7 @@ fn visibilitySystem(engine: *Engine) void {
 
             if (hasShape) {
                 const shape = engine.registry.getConst(Shape, shape_entity);
-                const shape_bounds = blk: {
-                    const half_size = math.zm.vec.scale(shape.size, 0.5);
-                    const center = math.zm.vec.xy(transform.position);
-                    break :blk math.AABBf{
-                        .min = center - half_size,
-                        .max = center + half_size,
-                    };
-                };
+                const shape_bounds = math.initABBFromCenter(f32, transform.position, shape.size);
 
                 if (!shape_bounds.intersects(cam_bounds)) {
                     continue;
@@ -399,14 +378,7 @@ fn visibilitySystem(engine: *Engine) void {
                 visible.list.append(engine.allocator, shape_entity) catch @panic("Out of memory");
             } else if (hasSprite) {
                 const sprite = engine.registry.getConst(Sprite, shape_entity);
-                const sprite_bounds = blk: {
-                    const half_size = math.zm.vec.scale(sprite.size, 0.5);
-                    const center = math.zm.vec.xy(transform.position);
-                    break :blk math.AABBf{
-                        .min = center - half_size,
-                        .max = center + half_size,
-                    };
-                };
+                const sprite_bounds = math.initABBFromCenter(f32, transform.position, sprite.size);
 
                 if (!sprite_bounds.intersects(cam_bounds)) {
                     continue;

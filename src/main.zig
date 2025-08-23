@@ -9,6 +9,7 @@ fn setup(engine: *rex.Engine) void {
 
     asset_server.load(&engine.renderer.renderer, .idle) catch @panic("asset load failed");
 
+    // Player
     _ = engine.spawn(
         .{
             rex.Transform{
@@ -39,10 +40,14 @@ fn setup(engine: *rex.Engine) void {
             rex.Collider{
                 .size = rex.math.Vec2f{ 32, 64 },
             },
+            rex.RigidBody{
+                .body_type = .dynamic,
+            },
             Player{},
         },
     );
 
+    // Camera
     _ = engine.spawn(.{
         rex.Transform{
             .position = rex.math.Vec3f{
@@ -64,6 +69,8 @@ fn setup(engine: *rex.Engine) void {
         },
         rex.VisibleEntities{},
     });
+
+    // Block 1
     _ = engine.spawn(
         .{
             rex.Transform{
@@ -84,9 +91,13 @@ fn setup(engine: *rex.Engine) void {
             rex.Collider{
                 .size = rex.math.Vec2f{ 100, 100 },
             },
+            rex.RigidBody{
+                .body_type = .static,
+            },
         },
     );
 
+    // Block 2
     _ = engine.spawn(
         .{
             rex.Transform{
@@ -106,6 +117,9 @@ fn setup(engine: *rex.Engine) void {
             },
             rex.Collider{
                 .size = rex.math.Vec2f{ 100, 100 },
+            },
+            rex.RigidBody{
+                .body_type = .static,
             },
         },
     );
@@ -188,6 +202,6 @@ pub fn main() !void {
     });
 
     try engine.run(.{
-        .renderColliders = true,
+        .renderColliders = false,
     });
 }

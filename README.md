@@ -17,7 +17,7 @@ I started this project after I kept copying and pasting the same code over and o
 ### Dependencies
 
 - zig version 0.14.0
-- [vm](https://github.com/griush/zm) - Math library
+- [zm](https://github.com/griush/zm) - Math library
 - [zig-ecs](https://github.com/prime31/zig-ecs) - ECS library
 - [zig-sdl3](https://github.com/Gota7/zig-sdl3) - SDL3 library
 

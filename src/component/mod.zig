@@ -61,44 +61,121 @@ pub const Collider = struct {
     size: math.Vec2f,
 };
 
+pub const RigidBody = struct {
+    pub const BodyType = enum { static, dynamic };
+    body_type: BodyType,
+};
+
+fn projectVelocity(vel: *Velocity, normal: @Vector(2, f32)) void {
+    const dot = vel.*[0] * normal[0] + vel.*[1] * normal[1];
+    // only if moving into the surface
+    if (dot < 0) {
+        vel.*[0] -= dot * normal[0];
+        vel.*[1] -= dot * normal[1];
+    }
+}
+
+// I hate this code so much but it works and thats good enough for iteration one
 pub fn collisionSystem(engine: *Engine) void {
-    var query = engine.registry.view(.{ Transform, Collider, Velocity }, .{});
+    var query = engine.registry.view(.{ Transform, Collider, Velocity, RigidBody }, .{});
     var iter_a = query.entityIterator();
 
     while (iter_a.next()) |entity_a| {
         const transform_a = engine.registry.get(Transform, entity_a);
         const collider_a = engine.registry.get(Collider, entity_a);
-        const aabb = blk: {
-            const half_size = math.zm.vec.scale(collider_a.size, 0.5);
-            const center = math.zm.vec.xy(transform_a.position);
-            break :blk math.AABBf{
-                .min = center - half_size,
-                .max = center + half_size,
-            };
+        const vel_a = engine.registry.get(Velocity, entity_a);
+        const rb_a = engine.registry.get(RigidBody, entity_a);
+
+        const center_a = .{
+            transform_a.position[0] + collider_a.size[0] / 2,
+            transform_a.position[1] + collider_a.size[1] / 2,
+            0,
         };
+        const aabb_a = math.initABBFromCenter(f32, center_a, collider_a.size);
+
         var iter_b = query.entityIterator();
         while (iter_b.next()) |entity_b| {
             if (entity_a == entity_b) continue;
 
             const transform_b = engine.registry.get(Transform, entity_b);
             const collider_b = engine.registry.get(Collider, entity_b);
+            const vel_b = engine.registry.get(Velocity, entity_b);
+            const rb_b = engine.registry.get(RigidBody, entity_b);
 
-            const item = blk: {
-                const half_size = math.zm.vec.scale(collider_b.size, 0.5);
-                const center = math.zm.vec.xy(transform_b.position);
-                break :blk math.AABBf{
-                    .min = center - half_size,
-                    .max = center + half_size,
-                };
+            const center_b = .{
+                transform_b.position[0] + collider_b.size[0] / 2,
+                transform_b.position[1] + collider_b.size[1] / 2,
+                0,
             };
+            const aabb_b = math.initABBFromCenter(f32, center_b, collider_b.size);
 
-            if (aabb.intersects(item)) {
-                const vel_a = engine.registry.get(Velocity, entity_a);
-                const vel_b = engine.registry.get(Velocity, entity_b);
-                vel_a[0] = 0;
-                vel_a[1] = 0;
-                vel_b[0] = 0;
-                vel_b[1] = 0;
+            if (!aabb_a.intersects(aabb_b)) continue;
+
+            const overlap_x = @min(aabb_a.max[0], aabb_b.max[0]) - @max(aabb_a.min[0], aabb_b.min[0]);
+            const overlap_y = @min(aabb_a.max[1], aabb_b.max[1]) - @max(aabb_a.min[1], aabb_b.min[1]);
+
+            // Helper: apply position + velocity fix
+            const resolve = struct {
+                fn apply(transform: *Transform, vel: *Velocity, center: @Vector(3, f32), other_center: @Vector(3, f32), olx: f32, oly: f32) void {
+                    if (olx < oly) {
+                        // Resolve X
+                        if (center[0] < other_center[0]) {
+                            transform.position[0] -= olx;
+                            projectVelocity(vel, .{ -1, 0 }); // hit from left, normal = (-1,0)
+                        } else {
+                            transform.position[0] += olx;
+                            projectVelocity(vel, .{ 1, 0 });
+                        }
+                    } else {
+                        // Resolve Y
+                        if (center[1] < other_center[1]) {
+                            transform.position[1] -= oly;
+                            projectVelocity(vel, .{ 0, -1 }); // hit from below
+                        } else {
+                            transform.position[1] += oly;
+                            projectVelocity(vel, .{ 0, 1 }); // hit from above
+                        }
+                    }
+                }
+            }.apply;
+
+            // --- resolution rules ---
+            if (rb_a.body_type == .static and rb_b.body_type == .static) {
+                continue;
+            } else if (rb_a.body_type == .dynamic and rb_b.body_type == .static) {
+                resolve(transform_a, vel_a, center_a, center_b, overlap_x, overlap_y);
+            } else if (rb_a.body_type == .static and rb_b.body_type == .dynamic) {
+                resolve(transform_b, vel_b, center_b, center_a, overlap_x, overlap_y);
+            } else if (rb_a.body_type == .dynamic and rb_b.body_type == .dynamic) {
+                // Split correction & clamp both velocities
+                const half_x = overlap_x / 2;
+                const half_y = overlap_y / 2;
+
+                if (overlap_x < overlap_y) {
+                    if (center_a[0] < center_b[0]) {
+                        transform_a.position[0] -= half_x;
+                        transform_b.position[0] += half_x;
+                        vel_a.*[0] = @max(vel_a.*[0], 0);
+                        vel_b.*[0] = @min(vel_b.*[0], 0);
+                    } else {
+                        transform_a.position[0] += half_x;
+                        transform_b.position[0] -= half_x;
+                        vel_a.*[0] = @min(vel_a.*[0], 0);
+                        vel_b.*[0] = @max(vel_b.*[0], 0);
+                    }
+                } else {
+                    if (center_a[1] < center_b[1]) {
+                        transform_a.position[1] -= half_y;
+                        transform_b.position[1] += half_y;
+                        vel_a.*[1] = @max(vel_a.*[1], 0);
+                        vel_b.*[1] = @min(vel_b.*[1], 0);
+                    } else {
+                        transform_a.position[1] += half_y;
+                        transform_b.position[1] -= half_y;
+                        vel_a.*[1] = @min(vel_a.*[1], 0);
+                        vel_b.*[1] = @max(vel_b.*[1], 0);
+                    }
+                }
             }
         }
     }
