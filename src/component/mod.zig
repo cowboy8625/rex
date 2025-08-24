@@ -42,6 +42,10 @@ pub fn animateSystem(engine: *Engine) void {
 
 pub fn physicsSystem(engine: *Engine) void {
     const time = engine.getResource(Time) orelse return;
+
+    const friction: f32 = 0.9;
+    const drag: @Vector(2, f32) = @splat(std.math.pow(f32, friction, time.delta * 60));
+
     const dt: @Vector(2, f32) = @splat(time.delta);
     var q = engine.registry.view(.{ Transform, Velocity }, .{});
     var iter = q.entityIterator();
@@ -49,6 +53,8 @@ pub fn physicsSystem(engine: *Engine) void {
     while (iter.next()) |entity| {
         const transform = engine.registry.get(Transform, entity);
         const velocity = engine.registry.get(Velocity, entity);
+
+        velocity.* *= drag;
 
         const delta = math.zm.vec.xy(velocity.*) * dt;
         const new_pos = math.zm.vec.xy(transform.position) + delta;
@@ -75,9 +81,32 @@ fn projectVelocity(vel: *Velocity, normal: @Vector(2, f32)) void {
     }
 }
 
+pub const PhysicsMaterial = struct {
+    friction: f32, // 0.0 = ice, 1.0 = strong friction
+};
+
+fn applySurfaceFriction(vel: *Velocity, friction: f32, normal: @Vector(2, f32)) void {
+    const tangent = if (normal[0] != 0)
+        @Vector(2, f32){ 0, 1 }
+    else
+        @Vector(2, f32){ 1, 0 };
+
+    const dot = vel.*[0] * tangent[0] + vel.*[1] * tangent[1];
+
+    const friction_factor = std.math.clamp(1.0 - friction, 0.0, 1.0);
+    const reduced = dot * friction_factor;
+
+    vel.*[0] -= tangent[0] * (dot - reduced);
+    vel.*[1] -= tangent[1] * (dot - reduced);
+}
+
 // I hate this code so much but it works and thats good enough for iteration one
+// Idk, most of what i dont like about this function is the fact that it is so long
+// BUT splitting it up would just make more call stacks.   I suppose you could inline them.
+// Context is lost if you split it up maybe.
+// TODO: Refactor into smaller functions but only if its the same speed or faster at run time.
 pub fn collisionSystem(engine: *Engine) void {
-    var query = engine.registry.view(.{ Transform, Collider, Velocity, RigidBody }, .{});
+    var query = engine.registry.view(.{ Transform, Collider, Velocity, RigidBody, PhysicsMaterial }, .{});
     var iter_a = query.entityIterator();
 
     while (iter_a.next()) |entity_a| {
@@ -85,6 +114,7 @@ pub fn collisionSystem(engine: *Engine) void {
         const collider_a = engine.registry.get(Collider, entity_a);
         const vel_a = engine.registry.get(Velocity, entity_a);
         const rb_a = engine.registry.get(RigidBody, entity_a);
+        const mat_a = engine.registry.get(PhysicsMaterial, entity_a);
 
         const center_a = .{
             transform_a.position[0] + collider_a.size[0] / 2,
@@ -101,6 +131,7 @@ pub fn collisionSystem(engine: *Engine) void {
             const collider_b = engine.registry.get(Collider, entity_b);
             const vel_b = engine.registry.get(Velocity, entity_b);
             const rb_b = engine.registry.get(RigidBody, entity_b);
+            const mat_b = engine.registry.get(PhysicsMaterial, entity_b);
 
             const center_b = .{
                 transform_b.position[0] + collider_b.size[0] / 2,
@@ -114,28 +145,45 @@ pub fn collisionSystem(engine: *Engine) void {
             const overlap_x = @min(aabb_a.max[0], aabb_b.max[0]) - @max(aabb_a.min[0], aabb_b.min[0]);
             const overlap_y = @min(aabb_a.max[1], aabb_b.max[1]) - @max(aabb_a.min[1], aabb_b.min[1]);
 
-            // Helper: apply position + velocity fix
+            // --- Helper: apply position + velocity fix ---
             const resolve = struct {
-                fn apply(transform: *Transform, vel: *Velocity, center: @Vector(3, f32), other_center: @Vector(3, f32), olx: f32, oly: f32) void {
+                fn apply(
+                    transform: *Transform,
+                    vel: *Velocity,
+                    mat: *const PhysicsMaterial,
+                    other_mat: *const PhysicsMaterial,
+                    center: @Vector(3, f32),
+                    other_center: @Vector(3, f32),
+                    olx: f32,
+                    oly: f32,
+                ) void {
+                    var normal: @Vector(2, f32) = .{ 0, 0 };
+
                     if (olx < oly) {
-                        // Resolve X
+                        // --- Resolve X ---
                         if (center[0] < other_center[0]) {
                             transform.position[0] -= olx;
-                            projectVelocity(vel, .{ -1, 0 }); // hit from left, normal = (-1,0)
+                            normal = .{ -1, 0 }; // hit from left
                         } else {
                             transform.position[0] += olx;
-                            projectVelocity(vel, .{ 1, 0 });
+                            normal = .{ 1, 0 };
                         }
                     } else {
-                        // Resolve Y
+                        // --- Resolve Y ---
                         if (center[1] < other_center[1]) {
                             transform.position[1] -= oly;
-                            projectVelocity(vel, .{ 0, -1 }); // hit from below
+                            normal = .{ 0, -1 }; // hit from below
                         } else {
                             transform.position[1] += oly;
-                            projectVelocity(vel, .{ 0, 1 }); // hit from above
+                            normal = .{ 0, 1 };
                         }
                     }
+
+                    projectVelocity(vel, normal);
+
+                    // --- Apply friction along tangent ---
+                    const combined_friction = (mat.friction + other_mat.friction) * 0.5;
+                    applySurfaceFriction(vel, combined_friction, normal);
                 }
             }.apply;
 
@@ -143,11 +191,12 @@ pub fn collisionSystem(engine: *Engine) void {
             if (rb_a.body_type == .static and rb_b.body_type == .static) {
                 continue;
             } else if (rb_a.body_type == .dynamic and rb_b.body_type == .static) {
-                resolve(transform_a, vel_a, center_a, center_b, overlap_x, overlap_y);
+                resolve(transform_a, vel_a, mat_a, mat_b, center_a, center_b, overlap_x, overlap_y);
             } else if (rb_a.body_type == .static and rb_b.body_type == .dynamic) {
-                resolve(transform_b, vel_b, center_b, center_a, overlap_x, overlap_y);
+                resolve(transform_b, vel_b, mat_b, mat_a, center_b, center_a, overlap_x, overlap_y);
             } else if (rb_a.body_type == .dynamic and rb_b.body_type == .dynamic) {
-                // Split correction & clamp both velocities
+
+                // --- Split correction & clamp both velocities ---
                 const half_x = overlap_x / 2;
                 const half_y = overlap_y / 2;
 
@@ -157,11 +206,17 @@ pub fn collisionSystem(engine: *Engine) void {
                         transform_b.position[0] += half_x;
                         vel_a.*[0] = @max(vel_a.*[0], 0);
                         vel_b.*[0] = @min(vel_b.*[0], 0);
+                        const combined_friction = (mat_a.friction + mat_b.friction) * 0.5;
+                        applySurfaceFriction(vel_a, combined_friction, .{ -1, 0 });
+                        applySurfaceFriction(vel_b, combined_friction, .{ 1, 0 });
                     } else {
                         transform_a.position[0] += half_x;
                         transform_b.position[0] -= half_x;
                         vel_a.*[0] = @min(vel_a.*[0], 0);
                         vel_b.*[0] = @max(vel_b.*[0], 0);
+                        const combined_friction = (mat_a.friction + mat_b.friction) * 0.5;
+                        applySurfaceFriction(vel_a, combined_friction, .{ 1, 0 });
+                        applySurfaceFriction(vel_b, combined_friction, .{ -1, 0 });
                     }
                 } else {
                     if (center_a[1] < center_b[1]) {
@@ -169,11 +224,17 @@ pub fn collisionSystem(engine: *Engine) void {
                         transform_b.position[1] += half_y;
                         vel_a.*[1] = @max(vel_a.*[1], 0);
                         vel_b.*[1] = @min(vel_b.*[1], 0);
+                        const combined_friction = (mat_a.friction + mat_b.friction) * 0.5;
+                        applySurfaceFriction(vel_a, combined_friction, .{ 0, -1 });
+                        applySurfaceFriction(vel_b, combined_friction, .{ 0, 1 });
                     } else {
                         transform_a.position[1] += half_y;
                         transform_b.position[1] -= half_y;
                         vel_a.*[1] = @min(vel_a.*[1], 0);
                         vel_b.*[1] = @max(vel_b.*[1], 0);
+                        const combined_friction = (mat_a.friction + mat_b.friction) * 0.5;
+                        applySurfaceFriction(vel_a, combined_friction, .{ 0, 1 });
+                        applySurfaceFriction(vel_b, combined_friction, .{ 0, -1 });
                     }
                 }
             }

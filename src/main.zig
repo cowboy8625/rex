@@ -43,6 +43,9 @@ fn setup(engine: *rex.Engine) void {
             rex.RigidBody{
                 .body_type = .dynamic,
             },
+            rex.PhysicsMaterial{
+                .friction = 0.0,
+            },
             Player{},
         },
     );
@@ -94,6 +97,9 @@ fn setup(engine: *rex.Engine) void {
             rex.RigidBody{
                 .body_type = .static,
             },
+            rex.PhysicsMaterial{
+                .friction = 1.0,
+            },
         },
     );
 
@@ -120,6 +126,39 @@ fn setup(engine: *rex.Engine) void {
             },
             rex.RigidBody{
                 .body_type = .static,
+            },
+            rex.PhysicsMaterial{
+                .friction = 0.0,
+            },
+        },
+    );
+
+    // Block 2
+    _ = engine.spawn(
+        .{
+            rex.Transform{
+                .position = rex.math.Vec3f{
+                    @floatFromInt(window.size[0] / 8),
+                    @floatFromInt(window.size[1] / 3),
+                    0,
+                },
+                .rotation = 0,
+                .scale = rex.math.Vec2f{ 1, 1 },
+            },
+            rex.Velocity{ 0, 0 },
+            rex.Shape{
+                .kind = .Rect,
+                .color = rex.Color{ .r = 200, .g = 128, .b = 128, .a = 255 },
+                .size = rex.math.Vec2f{ 50, 50 },
+            },
+            rex.Collider{
+                .size = rex.math.Vec2f{ 50, 50 },
+            },
+            rex.RigidBody{
+                .body_type = .dynamic,
+            },
+            rex.PhysicsMaterial{
+                .friction = 1.0,
             },
         },
     );

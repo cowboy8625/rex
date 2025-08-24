@@ -19,6 +19,7 @@ pub const VisibleEntities = component.VisibleEntities;
 pub const Velocity = component.Velocity;
 pub const Collider = component.Collider;
 pub const RigidBody = component.RigidBody;
+pub const PhysicsMaterial = component.PhysicsMaterial;
 
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
