@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    // Export Rex
     _ = b.addModule("rex", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
