@@ -20,16 +20,22 @@ pub const Velocity = component.Velocity;
 pub const Collider = component.Collider;
 pub const RigidBody = component.RigidBody;
 pub const PhysicsMaterial = component.PhysicsMaterial;
+pub const Gravity = component.Gravity;
+
+// TODO: Move to eventbus or something
+pub const CollisionEvent = component.CollisionEvent;
 
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
 pub const AssetServer = @import("resource/AssetServer.zig");
 
 pub const Engine = @import("Engine.zig");
+pub const EventBus = @import("EventBus.zig");
 
 test {
     _ = @import("component/mod.zig");
     _ = @import("resource/mod.zig");
     _ = @import("Engine.zig");
     _ = @import("math.zig");
+    _ = @import("util.zig");
 }

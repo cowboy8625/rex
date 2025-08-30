@@ -3,6 +3,7 @@ const entt = @import("entt");
 const sdl3 = @import("sdl3");
 const math = @import("math.zig");
 const cmp = @import("component/mod.zig");
+const util = @import("util.zig");
 
 pub const Color = sdl3.pixels.Color;
 
@@ -15,8 +16,10 @@ pub const Collider = @import("component/mod.zig").Collider;
 
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
-pub const Renderer = @import("render/sdl3.zig");
 pub const AssetServer = @import("resource/AssetServer.zig");
+pub const EventBus = @import("EventBus.zig");
+
+pub const Renderer = @import("render/sdl3.zig");
 
 const Engine = @This();
 
@@ -46,12 +49,23 @@ resources: std.AutoHashMapUnmanaged(usize, ResourceBox) = .{},
 keys: [@typeInfo(sdl3.keycode.Keycode).@"enum".fields.len]bool =
     [_]bool{false} ** @typeInfo(sdl3.keycode.Keycode).@"enum".fields.len,
 
-pub fn init(allocator: std.mem.Allocator) Engine {
-    return Engine{
+pub fn init(allocator: std.mem.Allocator) !Engine {
+    var self = Engine{
         .allocator = allocator,
         .registry = entt.Registry.init(allocator),
         .renderer = Renderer.init() catch @panic("Failed to init renderer"),
     };
+
+    self.addSystem(.Update, .{
+        visibilitySystem,
+        cmp.collisionSystem,
+        cmp.physicsSystem,
+        cmp.animateSystem,
+    });
+
+    try self.setupResources();
+
+    return self;
 }
 
 pub fn deinit(self: *Engine) void {
@@ -129,13 +143,16 @@ pub fn insertResource(self: *Engine, value: anytype) void {
     errdefer self.allocator.destroy(ptr);
     ptr.* = value;
 
-    const type_id = getTypeKey(T);
+    const type_id = util.getTypeKey(T);
     const box = ResourceBox{
         .type_id = type_id,
         .ptr = ptr,
         .deinitFn = struct {
             pub fn deinitFn(_ptr_: *anyopaque, allocator: std.mem.Allocator) void {
                 const real_ptr: *T = @alignCast(@ptrCast(_ptr_));
+                if (@hasDecl(T, "deinit")) {
+                    real_ptr.deinit();
+                }
                 allocator.destroy(real_ptr);
             }
         }.deinitFn,
@@ -145,7 +162,7 @@ pub fn insertResource(self: *Engine, value: anytype) void {
 }
 
 pub fn getResource(self: *Engine, comptime T: type) ?*T {
-    const type_id = getTypeKey(T);
+    const type_id = util.getTypeKey(T);
     if (self.resources.get(type_id)) |box| {
         return @alignCast(@ptrCast(box.ptr));
     }
@@ -153,7 +170,7 @@ pub fn getResource(self: *Engine, comptime T: type) ?*T {
 }
 
 pub fn getResourceConst(self: *const Engine, comptime T: type) ?*const T {
-    const type_id = getTypeKey(T);
+    const type_id = util.getTypeKey(T);
     if (self.resources.get(type_id)) |box| {
         return @alignCast(@ptrCast(box.ptr));
     }
@@ -181,22 +198,18 @@ fn setupResources(self: *Engine) !void {
     const size = try self.renderer.getWindowSize();
     self.insertResource(Window{ .size = size });
     self.insertResource(AssetServer.init(self.allocator));
+    self.insertResource(EventBus.init(self.allocator));
 }
 
 pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !void {
     var last_counter: u64 = sdl3.timer.getPerformanceCounter();
     const freq: u64 = sdl3.timer.getPerformanceFrequency();
 
-    self.addSystem(.Update, .{
-        visibilitySystem,
-        cmp.physicsSystem,
-        cmp.collisionSystem,
-        cmp.animateSystem,
-    });
+    var is_running = true;
 
-    try self.setupResources();
     self.runStartupSystems();
-    while (true) {
+
+    while (is_running) {
         const current_counter = sdl3.timer.getPerformanceCounter();
         const delta: u64 = current_counter - last_counter;
         last_counter = current_counter;
@@ -206,12 +219,17 @@ pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !v
         time.delta = dt;
         time.total += dt;
 
-        if (sdl3.events.poll()) |event| {
+        while (sdl3.events.poll()) |event| {
             switch (event) {
-                .quit => break,
-                .terminating => break,
+                .quit, .terminating => {
+                    is_running = false;
+                    break;
+                },
                 .key_down => |key_down| if (key_down.key) |key| {
-                    if (key == .escape) break;
+                    if (key == .escape) {
+                        is_running = false;
+                        break;
+                    }
                     self.keys[@intFromEnum(key)] = true;
                 },
                 .key_up => |key_up| if (key_up.key) |key| {
@@ -230,6 +248,9 @@ pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !v
         if (options.renderColliders) try self.renderColliderSystem();
 
         try self.renderer.renderEnd();
+
+        var bus = self.getResource(EventBus) orelse return error.MissingResource;
+        bus.clear();
     }
 }
 
@@ -396,8 +417,4 @@ fn visibilitySystem(engine: *Engine) void {
             }
         }.lessThan);
     }
-}
-
-fn getTypeKey(comptime T: type) u64 {
-    return std.hash.Wyhash.hash(0, @typeName(T));
 }

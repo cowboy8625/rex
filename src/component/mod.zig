@@ -1,5 +1,7 @@
 const std = @import("std");
 const math = @import("../math.zig");
+const EventBus = @import("../EventBus.zig");
+const entt = @import("entt");
 
 const Vec2f = math.Vec2f;
 
@@ -19,6 +21,13 @@ test {
     _ = @import("Transform.zig");
     _ = @import("VisibleEntities.zig");
 }
+
+pub const CollisionEvent = struct {
+    pub const Side = enum { Left, Right, Top, Bottom };
+    entity_1: entt.Entity,
+    entity_2: entt.Entity,
+    side: ?Side = null,
+};
 
 const Engine = @import("../Engine.zig");
 const Time = @import("../resource/Time.zig");
@@ -60,8 +69,19 @@ pub fn physicsSystem(engine: *Engine) void {
         const new_pos = math.zm.vec.xy(transform.position) + delta;
 
         transform.position = math.Vec3f{ new_pos[0], new_pos[1], transform.position[2] };
+
+        const gravity = engine.registry.tryGetConst(Gravity, entity) orelse continue;
+
+        const scale = 400.0;
+        velocity.*[0] += gravity.direction[0] * gravity.force * dt[0] * scale;
+        velocity.*[1] += gravity.direction[1] * gravity.force * dt[0] * scale;
     }
 }
+
+pub const Gravity = struct {
+    direction: @Vector(2, f32) = @Vector(2, f32){ 0, 1 },
+    force: f32 = 9.81,
+};
 
 pub const Collider = struct {
     size: math.Vec2f,
@@ -108,6 +128,7 @@ fn applySurfaceFriction(vel: *Velocity, friction: f32, normal: @Vector(2, f32)) 
 pub fn collisionSystem(engine: *Engine) void {
     var query = engine.registry.view(.{ Transform, Collider, Velocity, RigidBody, PhysicsMaterial }, .{});
     var iter_a = query.entityIterator();
+    var bus = engine.getResource(EventBus) orelse return;
 
     while (iter_a.next()) |entity_a| {
         const transform_a = engine.registry.get(Transform, entity_a);
@@ -187,13 +208,17 @@ pub fn collisionSystem(engine: *Engine) void {
                 }
             }.apply;
 
+            var is_colliding = false;
+
             // --- resolution rules ---
             if (rb_a.body_type == .static and rb_b.body_type == .static) {
                 continue;
             } else if (rb_a.body_type == .dynamic and rb_b.body_type == .static) {
                 resolve(transform_a, vel_a, mat_a, mat_b, center_a, center_b, overlap_x, overlap_y);
+                is_colliding = true;
             } else if (rb_a.body_type == .static and rb_b.body_type == .dynamic) {
                 resolve(transform_b, vel_b, mat_b, mat_a, center_b, center_a, overlap_x, overlap_y);
+                is_colliding = true;
             } else if (rb_a.body_type == .dynamic and rb_b.body_type == .dynamic) {
 
                 // --- Split correction & clamp both velocities ---
@@ -237,6 +262,13 @@ pub fn collisionSystem(engine: *Engine) void {
                         applySurfaceFriction(vel_b, combined_friction, .{ 0, -1 });
                     }
                 }
+                is_colliding = true;
+            }
+            if (is_colliding) {
+                bus.emit(CollisionEvent, .{
+                    .entity_1 = entity_a,
+                    .entity_2 = entity_b,
+                });
             }
         }
     }
