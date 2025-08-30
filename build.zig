@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     // Export Rex
-    _ = b.addModule("rex", .{
+    const exported_module = b.addModule("rex", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -68,12 +68,15 @@ pub fn build(b: *std.Build) !void {
             .c_sdl_preferred_linkage = .static,
         });
         lib.root_module.addImport("sdl3", sdl3.module("sdl3"));
+        exported_module.addImport("sdl3", sdl3.module("sdl3"));
 
         const entt = b.dependency("entt", .{ .target = target, .optimize = optimize });
         lib.root_module.addImport("entt", entt.module("zig-ecs"));
+        exported_module.addImport("entt", entt.module("zig-ecs"));
 
         const zm = b.dependency("zm", .{ .target = target, .optimize = optimize });
         lib.root_module.addImport("zm", zm.module("zm"));
+        exported_module.addImport("zm", zm.module("zm"));
     }
 
     b.installArtifact(lib);
