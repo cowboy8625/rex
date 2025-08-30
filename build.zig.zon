@@ -2,19 +2,19 @@
     .name = .rex,
     .version = "0.1.0",
     .fingerprint = 0xee6003c0e04dcd1e,
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .sdl3 = .{
-            .url = "git+https://github.com/Gota7/zig-sdl3?ref=master#b345607214e304eed38aa7fa9c0398c9a87d7a2e",
-            .hash = "sdl3-0.0.1-NmT1Qxn8HADSNEyMNBeGHUuy4J85gwpmewsgyyP0BfXr",
+            .url = "git+https://github.com/Gota7/zig-sdl3#694ffacd7c2c0b83aaa7a9bb1e279d7b39ea9aee",
+            .hash = "sdl3-0.1.1-NmT1QwTgIADixpCS2g5pBBON5AEfnjOox94dU0dtT-tq",
         },
         .entt = .{
-            .url = "git+https://github.com/prime31/zig-ecS#450e9a322ea9087ffc6d471648a371f50067b55b",
-            .hash = "entt-1.0.0-qJPtbOrVAgCbPkX-YI7ERLt_4ACkKiSDSNQAc-6YlxFr",
+            .url = "git+https://github.com/prime31/zig-ecS#dbf3647c2cc4f327fe87067e40f8436c7f87f209",
+            .hash = "entt-1.0.0-qJPtbNLVAgDPXaUbyRSsBTK75Cr1WujUA92kToJugWry",
         },
         .zm = .{
-            .url = "git+https://github.com/griush/zm#27ee118800e6ee0804499d053a54100beb579bf3",
-            .hash = "zm-0.3.0-cLX-WY3PAABvjPwxqDx9GZkMixyyrlHueLZTxpGy3kLE",
+            .url = "git+https://github.com/griush/zm#b5d70485dfc78baa9251a06a844d860fd00e9bcf",
+            .hash = "zm-0.4.0-cLX-WdndAACqPRGqhCAsd65iTajgaVVwrXhoLUQFKTOt",
         },
     },
     .paths = .{

@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) !void {
             for (entry.value_ptr.*.items) |f| {
                 allocator.free(f);
             }
-            entry.value_ptr.*.deinit();
+            entry.value_ptr.*.deinit(allocator);
             allocator.destroy(entry.value_ptr.*);
         }
         assets.deinit();
@@ -134,22 +134,22 @@ fn collectAssets(allocator: std.mem.Allocator, root: []const u8, map: *std.Strin
 
                     const list = map.get(folder) orelse blk: {
                         const new_list = try allocator.create(std.ArrayList([]const u8));
-                        new_list.* = std.ArrayList([]const u8).init(allocator);
+                        new_list.* = try std.ArrayList([]const u8).initCapacity(allocator, 14);
                         try map.put(folder, new_list);
                         break :blk new_list;
                     };
-                    try list.*.append(try allocator.dupe(u8, name));
+                    try list.*.append(allocator, try allocator.dupe(u8, name));
                 } else if (len == 1) {
                     const name_full = parts.next().?;
                     const name = std.mem.trimRight(u8, name_full, ".png");
 
                     const list = map.get("root") orelse blk: {
                         const new_list = try allocator.create(std.ArrayList([]const u8));
-                        new_list.* = std.ArrayList([]const u8).init(allocator);
+                        new_list.* = try std.ArrayList([]const u8).initCapacity(allocator, 14);
                         try map.put("root", new_list);
                         break :blk new_list;
                     };
-                    try list.*.append(try allocator.dupe(u8, name));
+                    try list.*.append(allocator, try allocator.dupe(u8, name));
                 }
             }
         }
@@ -157,10 +157,10 @@ fn collectAssets(allocator: std.mem.Allocator, root: []const u8, map: *std.Strin
 }
 
 fn buildAssetsEnum(assets: std.StringHashMap(*std.ArrayList([]const u8))) ![]const u8 {
-    var list = std.ArrayList(u8).init(std.heap.page_allocator);
-    defer list.deinit();
+    var list = try std.ArrayList(u8).initCapacity(std.heap.page_allocator, 14);
+    defer list.deinit(std.heap.page_allocator);
 
-    try list.appendSlice(
+    try list.appendSlice(std.heap.page_allocator,
         \\pub const AssetName = enum {
     );
 
@@ -173,22 +173,22 @@ fn buildAssetsEnum(assets: std.StringHashMap(*std.ArrayList([]const u8))) ![]con
             if (std.mem.eql(u8, folder, "root")) {
                 // top-level files: emit directly as enum fields
                 for (files.items) |f| {
-                    try list.writer().print("\n    {s},", .{f});
+                    try list.writer(std.heap.page_allocator).print("\n    {s},", .{f});
                 }
             } else {
                 // subfolder: emit nested enum
-                try list.writer().print("\n    const {s} = enum {{", .{folder});
+                try list.writer(std.heap.page_allocator).print("\n    const {s} = enum {{", .{folder});
                 for (files.items) |f| {
-                    try list.writer().print("\n        {s},", .{f});
+                    try list.writer(std.heap.page_allocator).print("\n        {s},", .{f});
                 }
-                try list.appendSlice("\n    };");
+                try list.appendSlice(std.heap.page_allocator, "\n    };");
             }
         }
     }
 
-    try list.appendSlice("\n};\n");
+    try list.appendSlice(std.heap.page_allocator, "\n};\n");
 
-    try list.appendSlice(
+    try list.appendSlice(std.heap.page_allocator,
         \\pub fn getAssetPath(asset: AssetName) []const u8 {
         \\    return switch (asset) {
     );
@@ -200,16 +200,16 @@ fn buildAssetsEnum(assets: std.StringHashMap(*std.ArrayList([]const u8))) ![]con
 
         if (std.mem.eql(u8, folder, "root")) {
             for (files.items) |f| {
-                try list.writer().print("\n        AssetName.{s} => \"assets/{s}.png\",", .{ f, f });
+                try list.writer(std.heap.page_allocator).print("\n        AssetName.{s} => \"assets/{s}.png\",", .{ f, f });
             }
         } else {
             for (files.items) |f| {
-                try list.writer().print("\n        AssetName.{s}.{s} => \"assets/{s}/{s}.png\",", .{ folder, f, folder, f });
+                try list.writer(std.heap.page_allocator).print("\n        AssetName.{s}.{s} => \"assets/{s}/{s}.png\",", .{ folder, f, folder, f });
             }
         }
     }
 
-    try list.appendSlice("\n    };\n}\n");
+    try list.appendSlice(std.heap.page_allocator, "\n    };\n}\n");
 
-    return list.toOwnedSlice();
+    return list.toOwnedSlice(std.heap.page_allocator);
 }
