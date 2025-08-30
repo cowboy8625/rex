@@ -42,13 +42,13 @@ pub fn build(b: *std.Build) !void {
     const shared_options = b.addOptions();
     lib_mod.addOptions("build_options", shared_options);
 
-    // Executable module
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    exe_mod.addImport("rex_lib", lib_mod);
+    // // Executable module
+    // const exe_mod = b.createModule(.{
+    //     .root_source_file = b.path("src/main.zig"),
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+    // exe_mod.addImport("rex_lib", lib_mod);
 
     // Build library
     const lib = b.addLibrary(.{
@@ -78,27 +78,27 @@ pub fn build(b: *std.Build) !void {
 
     b.installArtifact(lib);
 
-    // Executable
-    const exe = b.addExecutable(.{
-        .name = "rex",
-        .root_module = exe_mod,
-    });
-    exe.root_module.addImport("rex", lib_mod);
-    b.installArtifact(exe);
+    // // Executable
+    // const exe = b.addExecutable(.{
+    //     .name = "rex",
+    //     .root_module = exe_mod,
+    // });
+    // exe.root_module.addImport("rex", lib_mod);
+    // b.installArtifact(exe);
 
     // Run step
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
-    b.step("run", "Run the app").dependOn(&run_cmd.step);
+    // const run_cmd = b.addRunArtifact(exe);
+    // run_cmd.step.dependOn(b.getInstallStep());
+    // if (b.args) |args| run_cmd.addArgs(args);
+    // b.step("run", "Run the app").dependOn(&run_cmd.step);
 
     // Tests
     const lib_tests = b.addTest(.{ .root_module = lib_mod });
-    const exe_tests = b.addTest(.{ .root_module = exe_mod });
+    // const exe_tests = b.addTest(.{ .root_module = exe_mod });
 
     const unit_test = b.step("test", "Run unit tests");
     unit_test.dependOn(&b.addRunArtifact(lib_tests).step);
-    unit_test.dependOn(&b.addRunArtifact(exe_tests).step);
+    // unit_test.dependOn(&b.addRunArtifact(exe_tests).step);
 }
 
 fn freeAssets(assets: *std.StringHashMap(*std.ArrayList([]const u8)), allocator: std.mem.Allocator) void {
