@@ -1,0 +1,14 @@
+.{
+    .name = .gui,
+    .version = "0.0.0",
+    .fingerprint = 0xd4ff50f86af06c8f,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .rex = .{
+            .path = "../../",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}

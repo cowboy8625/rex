@@ -149,7 +149,7 @@ pub fn insertResource(self: *Engine, value: anytype) void {
         .ptr = ptr,
         .deinitFn = struct {
             pub fn deinitFn(_ptr_: *anyopaque, allocator: std.mem.Allocator) void {
-                const real_ptr: *T = @alignCast(@ptrCast(_ptr_));
+                const real_ptr: *T = @ptrCast(@alignCast(_ptr_));
                 if (@hasDecl(T, "deinit")) {
                     real_ptr.deinit();
                 }
@@ -164,7 +164,7 @@ pub fn insertResource(self: *Engine, value: anytype) void {
 pub fn getResource(self: *Engine, comptime T: type) ?*T {
     const type_id = util.getTypeKey(T);
     if (self.resources.get(type_id)) |box| {
-        return @alignCast(@ptrCast(box.ptr));
+        return @ptrCast(@alignCast(box.ptr));
     }
     return null;
 }
@@ -172,7 +172,7 @@ pub fn getResource(self: *Engine, comptime T: type) ?*T {
 pub fn getResourceConst(self: *const Engine, comptime T: type) ?*const T {
     const type_id = util.getTypeKey(T);
     if (self.resources.get(type_id)) |box| {
-        return @alignCast(@ptrCast(box.ptr));
+        return @ptrCast(@alignCast(box.ptr));
     }
     return null;
 }
@@ -202,6 +202,20 @@ fn setupResources(self: *Engine) !void {
 }
 
 pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !void {
+    const zgui = @import("zgui");
+
+    zgui.init(self.allocator);
+    const content_dir = @import("build_options").content_dir;
+
+    _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", 16.0);
+
+    zgui.backend.init(
+        window,
+        demo.gctx.device,
+        @enumToInt(swapchain_format),
+        @enumToInt(depth_format),
+    );
+
     var last_counter: u64 = sdl3.timer.getPerformanceCounter();
     const freq: u64 = sdl3.timer.getPerformanceFrequency();
 
@@ -304,6 +318,7 @@ fn renderTextureSystem(self: *Engine) !void {
 
     const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
 
+    std.log.info("Rendering {d} textures", .{visible.list.items.len});
     for (visible.list.items) |e| {
         if (!self.registry.has(Sprite, e)) continue;
         const transform = self.registry.get(Transform, e);

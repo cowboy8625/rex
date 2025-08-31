@@ -1,7 +1,8 @@
 const std = @import("std");
+const cimgui = @import("cimgui_zig");
 
 pub fn build(b: *std.Build) !void {
-    const assets_dir = "assets";
+    const assets_dir = b.option(std.Build.LazyPath, "assets_dir", "Path to the assets directory (default: assets)") orelse b.path("assets");
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -10,7 +11,7 @@ pub fn build(b: *std.Build) !void {
     var assets = std.StringHashMap(*std.ArrayList([]const u8)).init(allocator);
     defer freeAssets(&assets, allocator);
 
-    try collectAssets(allocator, assets_dir, &assets);
+    try collectAssets(allocator, assets_dir.getPath(b), &assets);
     const stringEnum = try buildAssetsEnum(assets);
 
     const wf = b.addWriteFiles();
@@ -38,17 +39,10 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = gen_assets_file,
     });
     lib_mod.addImport("generated_assets", gen_module);
+    exported_module.addImport("generated_assets", gen_module);
 
     const shared_options = b.addOptions();
     lib_mod.addOptions("build_options", shared_options);
-
-    // // Executable module
-    // const exe_mod = b.createModule(.{
-    //     .root_source_file = b.path("src/main.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // exe_mod.addImport("rex_lib", lib_mod);
 
     // Build library
     const lib = b.addLibrary(.{
@@ -57,51 +51,41 @@ pub fn build(b: *std.Build) !void {
         .linkage = .static,
     });
 
-    // External dependencies
-    {
-        const sdl3 = b.dependency("sdl3", .{
-            .target = target,
-            .optimize = optimize,
-            .callbacks = false,
-            .ext_image = true,
-            .c_sdl_sanitize_c = .off,
-            .c_sdl_preferred_linkage = .static,
-        });
-        lib.root_module.addImport("sdl3", sdl3.module("sdl3"));
-        exported_module.addImport("sdl3", sdl3.module("sdl3"));
+    const sdl3 = b.dependency("sdl3", .{
+        .target = target,
+        .optimize = optimize,
+        .callbacks = false,
+        .ext_image = true,
+        .c_sdl_sanitize_c = .off,
+        .c_sdl_preferred_linkage = .static,
+    });
+    lib.root_module.addImport("sdl3", sdl3.module("sdl3"));
+    exported_module.addImport("sdl3", sdl3.module("sdl3"));
 
-        const entt = b.dependency("entt", .{ .target = target, .optimize = optimize });
-        lib.root_module.addImport("entt", entt.module("zig-ecs"));
-        exported_module.addImport("entt", entt.module("zig-ecs"));
+    const entt = b.dependency("entt", .{ .target = target, .optimize = optimize });
+    lib.root_module.addImport("entt", entt.module("zig-ecs"));
+    exported_module.addImport("entt", entt.module("zig-ecs"));
 
-        const zm = b.dependency("zm", .{ .target = target, .optimize = optimize });
-        lib.root_module.addImport("zm", zm.module("zm"));
-        exported_module.addImport("zm", zm.module("zm"));
-    }
+    const zm = b.dependency("zm", .{ .target = target, .optimize = optimize });
+    lib.root_module.addImport("zm", zm.module("zm"));
+    exported_module.addImport("zm", zm.module("zm"));
+
+    const cimgui_dep = b.dependency("cimgui_zig", .{
+        .target = target,
+        .optimize = optimize,
+        .platform = cimgui.Platform.GLFW,
+        .renderer = cimgui.Renderer.Vulkan,
+    });
+    lib.linkLibrary(cimgui_dep.artifact("cimgui"));
+    exported_module.linkLibrary(cimgui_dep.artifact("cimgui"));
 
     b.installArtifact(lib);
 
-    // // Executable
-    // const exe = b.addExecutable(.{
-    //     .name = "rex",
-    //     .root_module = exe_mod,
-    // });
-    // exe.root_module.addImport("rex", lib_mod);
-    // b.installArtifact(exe);
-
-    // Run step
-    // const run_cmd = b.addRunArtifact(exe);
-    // run_cmd.step.dependOn(b.getInstallStep());
-    // if (b.args) |args| run_cmd.addArgs(args);
-    // b.step("run", "Run the app").dependOn(&run_cmd.step);
-
     // Tests
     const lib_tests = b.addTest(.{ .root_module = lib_mod });
-    // const exe_tests = b.addTest(.{ .root_module = exe_mod });
 
     const unit_test = b.step("test", "Run unit tests");
     unit_test.dependOn(&b.addRunArtifact(lib_tests).step);
-    // unit_test.dependOn(&b.addRunArtifact(exe_tests).step);
 }
 
 fn freeAssets(assets: *std.StringHashMap(*std.ArrayList([]const u8)), allocator: std.mem.Allocator) void {
@@ -121,7 +105,7 @@ fn collectAssets(
     root: []const u8,
     map: *std.StringHashMap(*std.ArrayList([]const u8)),
 ) !void {
-    var dir = try std.fs.cwd().openDir(root, .{ .iterate = true });
+    var dir = std.fs.cwd().openDir(root, .{ .iterate = true }) catch return;
     defer dir.close();
 
     var it = dir.iterate();
@@ -157,6 +141,7 @@ fn buildAssetsEnum(assets: std.StringHashMap(*std.ArrayList([]const u8))) ![]con
     const w = buf.writer(std.heap.page_allocator);
     try w.writeAll(
         \\pub const AssetName = enum {
+        \\    none,
     );
 
     var it = assets.iterator();
@@ -201,6 +186,13 @@ fn buildAssetsEnum(assets: std.StringHashMap(*std.ArrayList([]const u8))) ![]con
         }
     }
 
-    try w.writeAll("\n    };\n}\n");
+    const end =
+        \\    else => @panic("unknown asset"),
+        \\    };
+        \\}
+        \\
+    ;
+
+    try w.writeAll(end);
     return buf.toOwnedSlice(std.heap.page_allocator);
 }

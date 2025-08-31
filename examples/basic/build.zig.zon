@@ -1,0 +1,14 @@
+.{
+    .name = .basic,
+    .version = "0.0.0",
+    .fingerprint = 0x90797553b9991fdf,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .rex = .{
+            .path = "../../",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}
