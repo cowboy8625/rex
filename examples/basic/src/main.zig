@@ -166,10 +166,18 @@ fn setup(engine: *rex.Engine) void {
     block3.setFriction(1.0);
     block3.build(engine);
 
+    var block4 = EntityBuilder.init();
+    block4.setPosition(.{ 0, 0, 0 });
+    block4.setSize(.{ 50, 50 });
+    block4.setColor(.{ .r = 250, .g = 188, .b = 188, .a = 255 });
+    block4.setBodyType(.dynamic);
+    block4.setFriction(1.0);
+    block4.build(engine);
+
     var floor = EntityBuilder.init();
     floor.setPosition(.{
         0,
-        @as(f32, @floatFromInt(window.size[1])), // - 25, // push to bottom, account for half height
+        @as(f32, @floatFromInt(window.size[1])) - 25,
         0,
     });
     floor.setSize(.{ @floatFromInt(window.size[0]), 50 });
@@ -207,6 +215,14 @@ fn controlPlayerSystem(engine: *rex.Engine) void {
     const vel = engine.registry.get(rex.Velocity, player_id);
 
     var v = rex.Velocity{ 0, 0 };
+
+    if (engine.isKeyPressed(.w)) {
+        v[1] -= 100;
+    }
+
+    if (engine.isKeyPressed(.s)) {
+        v[1] += 100;
+    }
 
     if (engine.isKeyPressed(.a)) {
         v[0] -= 100;
@@ -261,7 +277,7 @@ pub fn main() !void {
     engine.addSystem(.Startup, .{setup});
     engine.addSystem(.Update, .{
         controlPlayerSystem,
-        cameraFollowPlayerSystem,
+        // cameraFollowPlayerSystem,
         updatePlayerIsGround,
     });
 

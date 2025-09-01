@@ -1,5 +1,5 @@
 const std = @import("std");
-const cimgui = @import("cimgui_zig");
+// const cimgui = @import("cimgui_zig");
 
 pub fn build(b: *std.Build) !void {
     const assets_dir = b.option(std.Build.LazyPath, "assets_dir", "Path to the assets directory (default: assets)") orelse b.path("assets");
@@ -70,14 +70,14 @@ pub fn build(b: *std.Build) !void {
     lib.root_module.addImport("zm", zm.module("zm"));
     exported_module.addImport("zm", zm.module("zm"));
 
-    const cimgui_dep = b.dependency("cimgui_zig", .{
-        .target = target,
-        .optimize = optimize,
-        .platform = cimgui.Platform.GLFW,
-        .renderer = cimgui.Renderer.Vulkan,
-    });
-    lib.linkLibrary(cimgui_dep.artifact("cimgui"));
-    exported_module.linkLibrary(cimgui_dep.artifact("cimgui"));
+    // const cimgui_dep = b.dependency("cimgui_zig", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    //     .platform = cimgui.Platform.GLFW,
+    //     .renderer = cimgui.Renderer.Vulkan,
+    // });
+    // lib.linkLibrary(cimgui_dep.artifact("cimgui"));
+    // exported_module.linkLibrary(cimgui_dep.artifact("cimgui"));
 
     b.installArtifact(lib);
 

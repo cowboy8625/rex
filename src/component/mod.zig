@@ -1,6 +1,6 @@
 const std = @import("std");
 const math = @import("../math.zig");
-const EventBus = @import("../EventBus.zig");
+const EventBus = @import("../resource/EventBus.zig");
 const entt = @import("entt");
 
 const Vec2f = math.Vec2f;

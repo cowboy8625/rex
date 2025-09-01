@@ -11,26 +11,26 @@ pub const Entity = entt.Entity;
 pub const Color = sdl3.pixels.Color;
 
 pub const Animation = component.Animation;
+pub const Camera = component.Camera;
+pub const Collider = component.Collider;
+pub const Gravity = component.Gravity;
+pub const PhysicsMaterial = component.PhysicsMaterial;
+pub const RigidBody = component.RigidBody;
+pub const Shape = component.Shape;
 pub const Sprite = component.Sprite;
 pub const Transform = component.Transform;
-pub const Shape = component.Shape;
-pub const Camera = component.Camera;
-pub const VisibleEntities = component.VisibleEntities;
 pub const Velocity = component.Velocity;
-pub const Collider = component.Collider;
-pub const RigidBody = component.RigidBody;
-pub const PhysicsMaterial = component.PhysicsMaterial;
-pub const Gravity = component.Gravity;
+pub const VisibleEntities = component.VisibleEntities;
 
 // TODO: Move to eventbus or something
 pub const CollisionEvent = component.CollisionEvent;
 
+pub const AssetServer = @import("resource/AssetServer.zig");
+pub const EventBus = @import("resource/EventBus.zig");
 pub const Time = @import("resource/Time.zig");
 pub const Window = @import("resource/Window.zig");
-pub const AssetServer = @import("resource/AssetServer.zig");
 
 pub const Engine = @import("Engine.zig");
-pub const EventBus = @import("EventBus.zig");
 
 test {
     _ = @import("component/mod.zig");

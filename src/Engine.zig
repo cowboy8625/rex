@@ -7,17 +7,17 @@ const util = @import("util.zig");
 
 pub const Color = sdl3.pixels.Color;
 
-pub const Sprite = @import("component/Sprite.zig");
-pub const Transform = @import("component/Transform.zig");
-pub const Shape = @import("component/Shape.zig");
-pub const Camera = @import("component/Camera.zig");
-pub const VisibleEntities = @import("component/VisibleEntities.zig");
-pub const Collider = @import("component/mod.zig").Collider;
+const Sprite = @import("component/mod.zig").Sprite;
+const Transform = @import("component/mod.zig").Transform;
+const Shape = @import("component/mod.zig").Shape;
+const Camera = @import("component/mod.zig").Camera;
+const VisibleEntities = @import("component/mod.zig").VisibleEntities;
+const Collider = @import("component/mod.zig").Collider;
 
-pub const Time = @import("resource/Time.zig");
-pub const Window = @import("resource/Window.zig");
-pub const AssetServer = @import("resource/AssetServer.zig");
-pub const EventBus = @import("EventBus.zig");
+const AssetServer = @import("resource/mod.zig").AssetServer;
+const EventBus = @import("resource/mod.zig").EventBus;
+const Time = @import("resource/mod.zig").Time;
+const Window = @import("resource/mod.zig").Window;
 
 pub const Renderer = @import("render/sdl3.zig");
 
@@ -202,20 +202,6 @@ fn setupResources(self: *Engine) !void {
 }
 
 pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !void {
-    const zgui = @import("zgui");
-
-    zgui.init(self.allocator);
-    const content_dir = @import("build_options").content_dir;
-
-    _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", 16.0);
-
-    zgui.backend.init(
-        window,
-        demo.gctx.device,
-        @enumToInt(swapchain_format),
-        @enumToInt(depth_format),
-    );
-
     var last_counter: u64 = sdl3.timer.getPerformanceCounter();
     const freq: u64 = sdl3.timer.getPerformanceFrequency();
 
@@ -318,7 +304,6 @@ fn renderTextureSystem(self: *Engine) !void {
 
     const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
 
-    std.log.info("Rendering {d} textures", .{visible.list.items.len});
     for (visible.list.items) |e| {
         if (!self.registry.has(Sprite, e)) continue;
         const transform = self.registry.get(Transform, e);
