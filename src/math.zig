@@ -12,6 +12,10 @@ pub const IVec2 = zm.vec.Vec(2, i32);
 /// u32
 pub const UVec2 = zm.vec.Vec(2, u32);
 
+pub inline fn splat(comptime S: comptime_int, comptime T: type, value: anytype) @Vector(S, T) {
+    return @as(@Vector(S, T), @splat(value));
+}
+
 // i32
 pub const AABB = zm.aabb.AABBBase(2, i32);
 pub const AABBf = zm.aabb.AABBBase(2, f32);

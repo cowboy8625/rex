@@ -17,7 +17,7 @@ pub fn init(allocator: std.mem.Allocator) EventBus {
     return .{ .allocator = allocator };
 }
 
-pub fn deinit(self: *EventBus) void {
+pub fn deinit(self: *EventBus, _: std.mem.Allocator) void {
     var it = self.events.iterator();
     while (it.next()) |entry| {
         entry.value_ptr.deinitFn(entry.value_ptr.ptr, self.allocator);

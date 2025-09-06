@@ -13,15 +13,28 @@ const Shape = @import("component/mod.zig").Shape;
 const Camera = @import("component/mod.zig").Camera;
 const VisibleEntities = @import("component/mod.zig").VisibleEntities;
 const Collider = @import("component/mod.zig").Collider;
+const StaticRigidBody = @import("component/mod.zig").StaticRigidBody;
+const DynamicRigidBody = @import("component/mod.zig").DynamicRigidBody;
 
 const AssetServer = @import("resource/mod.zig").AssetServer;
 const EventBus = @import("resource/mod.zig").EventBus;
 const Time = @import("resource/mod.zig").Time;
 const Window = @import("resource/mod.zig").Window;
+const SpatialHashTable = @import("SpatialHashTable.zig");
 
 pub const Renderer = @import("render/sdl3.zig");
 
 const Engine = @This();
+
+pub const Options = struct {
+    renderColliders: bool = false,
+};
+
+pub const Event = struct {
+    pub const KeyReleased = struct {
+        key: sdl3.keycode.Keycode,
+    };
+};
 
 pub const SystemFn = *const fn (engine: *Engine) void;
 pub const SystemType = enum {
@@ -61,6 +74,7 @@ pub fn init(allocator: std.mem.Allocator) !Engine {
         cmp.collisionSystem,
         cmp.physicsSystem,
         cmp.animateSystem,
+        SpatialHashTable.spatialUpdateSystem,
     });
 
     try self.setupResources();
@@ -88,12 +102,64 @@ pub fn deinit(self: *Engine) void {
     self.renderer.deinit();
 }
 
-pub fn spawn(self: *Engine, components: anytype) entt.Entity {
+pub fn spawn(self: *Engine, components: anytype) !entt.Entity {
     const entity = self.registry.create();
+    inline for (components) |component| {
+        if (@TypeOf(component) == Transform) {}
+        self.registry.add(entity, component);
+    }
+    try self.add_to_spatial_hash_table(entity);
+    return entity;
+}
+
+pub fn include(self: *Engine, entity: entt.Entity, components: anytype) !void {
     inline for (components) |component| {
         self.registry.add(entity, component);
     }
-    return entity;
+    try self.add_to_spatial_hash_table(entity);
+}
+
+fn add_to_spatial_hash_table(self: *Engine, entity: entt.Entity) !void {
+    const has_camera = self.registry.has(Camera, entity);
+    if (has_camera) return;
+
+    const has_transform = self.registry.has(Transform, entity);
+    if (!has_transform) return;
+
+    const has_sprite = self.registry.has(Sprite, entity);
+    const has_shape = self.registry.has(Shape, entity);
+    if (!has_sprite and !has_shape) return;
+
+    const has_collider = self.registry.has(Collider, entity);
+    if (!has_collider) return;
+
+    const has_dynamic_rigidbody = self.registry.has(DynamicRigidBody, entity);
+    const has_static_rigidbody = self.registry.has(StaticRigidBody, entity);
+    if (!has_dynamic_rigidbody and !has_static_rigidbody) return;
+
+    const already_tagged = self.registry.has(SpatialHashTable.SpatialTag, entity);
+    if (already_tagged) return;
+
+    const spatial_hash_table = self.getResource(SpatialHashTable) orelse return error.MissingSpatialHashTableResource;
+    const transform = self.registry.get(Transform, entity);
+    const key = math.zm.vec.xy(transform.position);
+    const bucket = spatial_hash_table.get(key);
+    if (bucket) |b| {
+        for (b) |e| {
+            if (e == entity) return;
+        }
+    }
+
+    try spatial_hash_table.insert(self.allocator, key, entity);
+    self.registry.add(entity, SpatialHashTable.SpatialTag{
+        .bucket = spatial_hash_table.hash(key),
+    });
+    // std.log.info("added entity {d} to spatial hash table", .{entity.index});
+    //
+    // var it = spatial_hash_table.data.iterator();
+    // while (it.next()) |entry| {
+    //     std.log.info("key: {any}, value: {any}", .{ entry.key_ptr.*, entry.value_ptr.* });
+    // }
 }
 
 pub fn addSystem(self: *Engine, system_type: SystemType, systems: anytype) void {
@@ -151,7 +217,7 @@ pub fn insertResource(self: *Engine, value: anytype) void {
             pub fn deinitFn(_ptr_: *anyopaque, allocator: std.mem.Allocator) void {
                 const real_ptr: *T = @ptrCast(@alignCast(_ptr_));
                 if (@hasDecl(T, "deinit")) {
-                    real_ptr.deinit();
+                    real_ptr.deinit(allocator);
                 }
                 allocator.destroy(real_ptr);
             }
@@ -199,9 +265,10 @@ fn setupResources(self: *Engine) !void {
     self.insertResource(Window{ .size = size });
     self.insertResource(AssetServer.init(self.allocator));
     self.insertResource(EventBus.init(self.allocator));
+    self.insertResource(SpatialHashTable.init(self.allocator, .{ 12, 12 }));
 }
 
-pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !void {
+pub fn run(self: *Engine, comptime options: Options) !void {
     var last_counter: u64 = sdl3.timer.getPerformanceCounter();
     const freq: u64 = sdl3.timer.getPerformanceFrequency();
 
@@ -234,6 +301,8 @@ pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !v
                 },
                 .key_up => |key_up| if (key_up.key) |key| {
                     self.keys[@intFromEnum(key)] = false;
+                    const bus = self.getResource(EventBus) orelse return error.MissingResource;
+                    bus.emit(Event.KeyReleased, .{ .key = key });
                 },
                 else => {},
             }
@@ -243,9 +312,7 @@ pub fn run(self: *Engine, comptime options: struct { renderColliders: bool }) !v
 
         try self.renderer.renderStart();
 
-        try self.renderShapeSystem();
-        try self.renderTextureSystem();
-        if (options.renderColliders) try self.renderColliderSystem();
+        try self.renderSystem(options);
 
         try self.renderer.renderEnd();
 
@@ -294,41 +361,38 @@ pub fn renderColliderSystem(engine: *Engine) !void {
     }
 }
 
-fn renderTextureSystem(self: *Engine) !void {
-    var cam_query = self.registry.view(.{ Camera, Transform }, .{});
-    var cam_iter = cam_query.entityIterator();
-    const cam_entity = cam_iter.next() orelse return;
-    const cam_transform = self.registry.get(Transform, cam_entity);
-    const cam = self.registry.get(Camera, cam_entity);
-    const visible = self.registry.get(VisibleEntities, cam_entity);
+fn drawCollider(
+    engine: *Engine,
+    e: entt.Entity,
+    transform: *const Transform,
+    cam_transform: *const Transform,
+    screen_center: math.Vec2f,
+) !void {
+    if (!engine.registry.has(Collider, e)) return;
 
-    const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
+    const collider = engine.registry.get(Collider, e);
+    const world_pos = transform.position;
+    const cam_pos = cam_transform.position;
+    const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
 
-    for (visible.list.items) |e| {
-        if (!self.registry.has(Sprite, e)) continue;
-        const transform = self.registry.get(Transform, e);
-        const sprite = self.registry.getConst(Sprite, e);
+    const rect = sdl3.rect.FRect{
+        .x = draw_pos[0],
+        .y = draw_pos[1],
+        .w = collider.size[0],
+        .h = collider.size[1],
+    };
 
-        const draw_pos = cam.worldToCamera2d(transform.position, cam_transform.position);
+    const color = sdl3.pixels.Color{
+        .r = 0,
+        .g = 0,
+        .b = 255,
+        .a = 99,
+    };
 
-        const r = self.renderer.renderer;
-
-        const texture = asset_server.get(sprite.asset_name) orelse {
-            std.log.err("Texture not found: {s}", .{@tagName(sprite.asset_name)});
-            @panic("Texture not found");
-        };
-        const rect = sdl3.rect.FRect{
-            .x = draw_pos[0],
-            .y = draw_pos[1],
-            .w = sprite.size[0],
-            .h = sprite.size[1],
-        };
-
-        try r.renderTexture(texture, sprite.src_rect, rect);
-    }
+    try engine.renderer.rect(rect, color);
 }
 
-fn renderShapeSystem(self: *Engine) !void {
+fn renderSystem(self: *Engine, comptime options: Options) !void {
     var cam_query = self.registry.view(.{ Camera, Transform, VisibleEntities }, .{});
     var cam_iter = cam_query.entityIterator();
     const cam_entity = cam_iter.next() orelse return;
@@ -341,25 +405,53 @@ fn renderShapeSystem(self: *Engine) !void {
         @floatFromInt(cam.size[1] / 2),
     };
 
+    const asset_server = self.getResourceConst(AssetServer) orelse return error.MissingResource;
     for (visible.list.items) |e| {
-        if (!self.registry.has(Shape, e)) continue;
-        const transform = self.registry.get(Transform, e);
-        const shape = self.registry.getConst(Shape, e);
+        if (self.registry.has(Sprite, e)) {
+            const transform = self.registry.get(Transform, e);
+            const sprite = self.registry.getConst(Sprite, e);
 
-        const world_pos = transform.position;
-        const cam_pos = cam_transform.position;
-        const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
+            const draw_pos = cam.worldToCamera2d(transform.position, cam_transform.position);
 
-        switch (shape.kind) {
-            .Rect => {
-                const rect = sdl3.rect.FRect{
-                    .x = draw_pos[0],
-                    .y = draw_pos[1],
-                    .w = shape.size[0],
-                    .h = shape.size[1],
-                };
-                try self.renderer.rect(rect, shape.color);
-            },
+            const r = self.renderer.renderer;
+
+            const texture = asset_server.get(sprite.asset_name) orelse {
+                std.log.err("Texture not found: {s}", .{@tagName(sprite.asset_name)});
+                @panic("Texture not found");
+            };
+
+            const size = sprite.size * transform.scale * @Vector(2, f32){ cam.zoom, cam.zoom };
+
+            const rect = sdl3.rect.FRect{
+                .x = draw_pos[0],
+                .y = draw_pos[1],
+                .w = size[0],
+                .h = size[1],
+            };
+
+            try r.renderTexture(texture, sprite.src_rect, rect);
+
+            if (options.renderColliders) try drawCollider(self, e, transform, cam_transform, screen_center);
+        } else if (self.registry.has(Shape, e)) {
+            const transform = self.registry.get(Transform, e);
+            const shape = self.registry.getConst(Shape, e);
+
+            const world_pos = transform.position;
+            const cam_pos = cam_transform.position;
+            const draw_pos = math.zm.vec.xy(world_pos - cam_pos) + screen_center;
+
+            switch (shape.kind) {
+                .Rect => {
+                    const rect = sdl3.rect.FRect{
+                        .x = draw_pos[0],
+                        .y = draw_pos[1],
+                        .w = shape.size[0],
+                        .h = shape.size[1],
+                    };
+                    try self.renderer.rect(rect, shape.color);
+                },
+            }
+            if (options.renderColliders) try drawCollider(self, e, transform, cam_transform, screen_center);
         }
     }
 }
@@ -384,29 +476,21 @@ fn visibilitySystem(engine: *Engine) void {
             const transform = engine.registry.get(Transform, shape_entity);
             const hasShape = engine.registry.has(Shape, shape_entity);
             const hasSprite = engine.registry.has(Sprite, shape_entity);
+
             if (!hasShape and !hasSprite) {
                 continue;
             }
 
-            if (hasShape) {
-                const shape = engine.registry.getConst(Shape, shape_entity);
-                const shape_bounds = math.initABBFromCenter(f32, transform.position, shape.size);
+            const size = if (hasShape)
+                engine.registry.getConst(Shape, shape_entity).size
+            else
+                engine.registry.getConst(Sprite, shape_entity).size;
 
-                if (!shape_bounds.intersects(cam_bounds)) {
-                    continue;
-                }
-
-                visible.list.append(engine.allocator, shape_entity) catch @panic("Out of memory");
-            } else if (hasSprite) {
-                const sprite = engine.registry.getConst(Sprite, shape_entity);
-                const sprite_bounds = math.initABBFromCenter(f32, transform.position, sprite.size);
-
-                if (!sprite_bounds.intersects(cam_bounds)) {
-                    continue;
-                }
-
-                visible.list.append(engine.allocator, shape_entity) catch @panic("Out of memory");
+            const shape_bounds = math.initABBFromCenter(f32, transform.position, size);
+            if (!shape_bounds.intersects(cam_bounds)) {
+                continue;
             }
+            visible.list.append(engine.allocator, shape_entity) catch @panic("Out of memory");
         }
 
         std.mem.sort(entt.Entity, visible.list.items, engine, struct {

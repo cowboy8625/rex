@@ -122,7 +122,9 @@ fn collectAssets(
 
         const folder = if (len >= 2) parts.next().? else "root";
         const name_full = parts.next().?;
-        const name = std.mem.trimRight(u8, name_full, ".png");
+        const trimmed_name = std.mem.trimRight(u8, name_full, ".png");
+        const name = try std.mem.replaceOwned(u8, allocator, trimmed_name, "-", "_");
+        defer allocator.free(name);
 
         const list = map.get(folder) orelse blk: {
             const new_list = try allocator.create(std.ArrayList([]const u8));
@@ -187,6 +189,7 @@ fn buildAssetsEnum(assets: std.StringHashMap(*std.ArrayList([]const u8))) ![]con
     }
 
     const end =
+        \\
         \\    else => @panic("unknown asset"),
         \\    };
         \\}

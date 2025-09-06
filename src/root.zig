@@ -15,7 +15,8 @@ pub const Camera = component.Camera;
 pub const Collider = component.Collider;
 pub const Gravity = component.Gravity;
 pub const PhysicsMaterial = component.PhysicsMaterial;
-pub const RigidBody = component.RigidBody;
+pub const StaticRigidBody = component.StaticRigidBody;
+pub const DynamicRigidBody = component.DynamicRigidBody;
 pub const Shape = component.Shape;
 pub const Sprite = component.Sprite;
 pub const Transform = component.Transform;
@@ -33,9 +34,10 @@ pub const Window = @import("resource/Window.zig");
 pub const Engine = @import("Engine.zig");
 
 test {
-    _ = @import("component/mod.zig");
-    _ = @import("resource/mod.zig");
     _ = @import("Engine.zig");
+    _ = @import("SpatialHashTable.zig");
+    _ = @import("component/mod.zig");
     _ = @import("math.zig");
+    _ = @import("resource/mod.zig");
     _ = @import("util.zig");
 }
